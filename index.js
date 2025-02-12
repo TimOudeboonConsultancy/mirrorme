@@ -50,6 +50,7 @@ const trelloApi = {
     const url = `${this.baseUrl}${endpoint}?key=${config.apiKey}&token=${config.token}`;
     const response = await fetch(url, options);
     if (!response.ok) {
+      console.error(`API Request Error: ${response.status} ${response.statusText}`);
       throw new Error(`Trello API error: ${response.statusText}`);
     }
     return response.json();
@@ -238,7 +239,7 @@ function validateTrelloWebhook(req, res, next) {
 
   // Only validate POST requests with HMAC
   if (req.method === 'POST') {
-    const callbackURL = 'https://mirrorme-jqjj87z9k-timothy-oudeboons-projects.vercel.app/webhook/card-moved';
+    const callbackURL = 'https://trello-sync-mirror-f28465526010.herokuapp.com/webhook/card-moved';
     const base64Digest = crypto
       .createHmac('sha1', process.env.TRELLO_API_SECRET)
       .update(req.rawBody + callbackURL)
