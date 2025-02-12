@@ -226,7 +226,7 @@ class TrelloSync {
   }
 }
 
-// Initialize sync instanc
+// Initialize sync instance
 const sync = new TrelloSync();
 
 // Webhook validation function
@@ -241,6 +241,15 @@ function validateTrelloWebhook(req, res, next) {
     const callbackURL = 'https://trello-sync-mirror-f28465526010.herokuapp.com/webhook/card-moved';
     
     try {
+      // Extensive logging for debugging
+      console.log('Webhook Validation Detailed Debug:');
+      console.log('Request Method:', req.method);
+      console.log('Raw Body Length:', req.rawBody ? req.rawBody.length : 'NO RAW BODY');
+      console.log('Callback URL:', callbackURL);
+      console.log('All Headers:', JSON.stringify(req.headers, null, 2));
+      console.log('X-Trello-Webhook Header:', req.headers['x-trello-webhook']);
+      console.log('API Secret Present:', !!process.env.TRELLO_API_SECRET);
+
       // First, verify the presence of the webhook signature
       const trelloSignature = req.headers['x-trello-webhook'];
       if (!trelloSignature) {
@@ -254,19 +263,29 @@ function validateTrelloWebhook(req, res, next) {
         return res.status(500).send('Internal Server Error: Missing API Secret');
       }
 
-      // Create base64 digest of the raw body concatenated with the callback URL
-      const base64Digest = crypto
-        .createHmac('sha1', process.env.TRELLO_API_SECRET)
+      // Validate the body is not empty
+      if (!req.rawBody) {
+        console.error('Raw body is empty');
+        return res.status(400).send('Bad Request: Empty body');
+      }
+
+      // Compute HMAC signature
+      const hmac = crypto.createHmac('sha1', process.env.TRELLO_API_SECRET);
+      const computedSignature = hmac
         .update(req.rawBody + callbackURL)
         .digest('base64');
 
+      console.log('Received Signature:', trelloSignature);
+      console.log('Computed Signature:', computedSignature);
+
       // Validate the signature
-      if (base64Digest === trelloSignature) {
+      if (computedSignature === trelloSignature) {
         return next();
       } else {
         console.error('Webhook signature validation failed');
-        console.error('Received signature:', trelloSignature);
-        console.error('Calculated signature:', base64Digest);
+        console.error('Signature Mismatch:');
+        console.error('Received:', trelloSignature);
+        console.error('Computed:', computedSignature);
         return res.status(401).send('Unauthorized: Invalid webhook signature');
       }
     } catch (error) {
