@@ -16,7 +16,7 @@ const config = {
         'NFrnAHBu', // tim-oudeboon-bv
         'McEG7GGu'  // aggregate board
     ],
-    callbackURL: 'https://mirrorme-jqjj87z9k-timothy-oudeboons-projects.vercel.app/webhook/card-moved'
+    callbackURL: 'https://trello-sync-mirror-f28465526010.herokuapp.com/webhook/card-moved'
 };
 
 async function sleep(ms) {

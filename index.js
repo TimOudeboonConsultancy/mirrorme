@@ -99,38 +99,93 @@ class TrelloSync {
 
   async initialize() {
     console.log('Initializing TrelloSync...');
+    console.log('Configured Source Boards:', JSON.stringify(config.sourceBoards, null, 2));
+    console.log('Configured List Names:', JSON.stringify(config.listNames, null, 2));
+
+    // Map lists for source boards
     for (const board of config.sourceBoards) {
+      console.log(`Fetching lists for board: ${board.name} (${board.id})`);
       const lists = await trelloApi.getLists(board.id);
+      console.log(`Lists found for ${board.name}:`, lists.map(l => l.name));
+      
       for (const list of lists) {
         if (config.listNames.includes(list.name)) {
-          this.listMapping.set(`${board.id}-${list.name}`, list.id);
+          const mappingKey = `${board.id}-${list.name}`;
+          this.listMapping.set(mappingKey, list.id);
+          console.log(`Mapped ${mappingKey} to list ID: ${list.id}`);
         }
       }
     }
+
+    // Map lists for aggregate board
+    console.log(`Fetching lists for aggregate board: ${config.aggregateBoard}`);
     const aggregateLists = await trelloApi.getLists(config.aggregateBoard);
+    console.log('Aggregate board lists:', aggregateLists.map(l => l.name));
+    
     for (const list of aggregateLists) {
       if (config.listNames.includes(list.name)) {
-        this.listMapping.set(`aggregate-${list.name}`, list.id);
+        const mappingKey = `aggregate-${list.name}`;
+        this.listMapping.set(mappingKey, list.id);
+        console.log(`Mapped ${mappingKey} to list ID: ${list.id}`);
       }
     }
+
+    // Log final list mapping for verification
+    console.log('Final List Mapping:');
+    for (const [key, value] of this.listMapping.entries()) {
+      console.log(`  ${key}: ${value}`);
+    }
+
     console.log('TrelloSync initialized');
   }
 
   async handleCardMove(card, sourceBoard, targetList) {
-    console.log(`Handling card move for card ${card.id} on board ${sourceBoard.name}`);
+    console.log(`Detailed Card Move Debug:
+    Card ID: ${card.id}
+    Card Name: ${card.name}
+    Source Board: ${sourceBoard.name} (${sourceBoard.id})
+    Target List Name: ${targetList.name}
+    Configured List Names: ${JSON.stringify(config.listNames)}
+    Configured Source Boards: ${JSON.stringify(config.sourceBoards.map(b => b.name))}
+    Aggregate Board: ${config.aggregateBoard}`);
+
+    // Check if the target list name is in the configured list names
+    const isConfiguredList = config.listNames.includes(targetList.name);
+    console.log(`Is target list configured? ${isConfiguredList}`);
+
+    // Log the list mapping to verify correct list IDs
+    console.log('List Mapping:');
+    for (const [key, value] of this.listMapping.entries()) {
+      console.log(`  ${key}: ${value}`);
+    }
+
     const cardMappingKey = `${sourceBoard.id}-${card.id}`;
     let mirroredCardId = this.cardMapping.get(cardMappingKey);
-    if (!mirroredCardId && config.listNames.includes(targetList.name)) {
+    
+    console.log(`Existing Mirrored Card ID for ${cardMappingKey}: ${mirroredCardId}`);
+
+    if (!mirroredCardId && isConfiguredList) {
       const aggregateListId = this.listMapping.get(`aggregate-${targetList.name}`);
-      const mirroredCard = await trelloApi.createCard(aggregateListId, {
-        ...card,
-        desc: `Original board: ${sourceBoard.name}\n\n${card.desc || ''}`,
-      });
-      mirroredCardId = mirroredCard.id;
-      this.cardMapping.set(cardMappingKey, mirroredCardId);
-      console.log(`Created mirrored card ${mirroredCardId}`);
+      console.log(`Attempting to create mirrored card in list: ${aggregateListId}`);
+      
+      if (!aggregateListId) {
+        console.error(`No aggregate list found for: aggregate-${targetList.name}`);
+        return;
+      }
+
+      try {
+        const mirroredCard = await trelloApi.createCard(aggregateListId, {
+          ...card,
+          desc: `Original board: ${sourceBoard.name}\n\n${card.desc || ''}`,
+        });
+        mirroredCardId = mirroredCard.id;
+        this.cardMapping.set(cardMappingKey, mirroredCardId);
+        console.log(`Created mirrored card ${mirroredCardId}`);
+      } catch (error) {
+        console.error('Error creating mirrored card:', error);
+      }
     } else if (mirroredCardId) {
-      if (config.listNames.includes(targetList.name)) {
+      if (isConfiguredList) {
         const aggregateListId = this.listMapping.get(`aggregate-${targetList.name}`);
         await trelloApi.updateCard(mirroredCardId, {
           idList: aggregateListId,
@@ -216,7 +271,8 @@ app.get('/', (req, res) => {
 
 app.all('/webhook/card-moved', (req, res) => {
   console.log(`Webhook request received: ${req.method}`);
-  console.log('Headers:', req.headers);
+  console.log('Webhook headers:', JSON.stringify(req.headers, null, 2));
+  console.log('Webhook body:', JSON.stringify(req.body, null, 2));
 
   // Immediately return 200 for HEAD requests
   if (req.method === 'HEAD') {
@@ -236,19 +292,26 @@ app.all('/webhook/card-moved', (req, res) => {
   // Validate and handle POST requests
   if (req.method === 'POST') {
     validateTrelloWebhook(req, res, () => {
-      console.log('Webhook body:', req.body);
       if (req.body.action) {
         const { action } = req.body;
+        
+        // Enhanced logging for action details
+        console.log('Action Type:', action.type);
+        console.log('Action Details:', JSON.stringify(action, null, 2));
+
         if (action.type === 'updateCard' && action.data.listAfter) {
           const card = action.data.card;
           const board = action.data.board;
           const targetList = action.data.listAfter;
+          
           if (board.id === config.aggregateBoard) {
             sync.handleAggregateCardMove(card, targetList).catch(console.error);
           } else {
             const sourceBoard = config.sourceBoards.find(b => b.id === board.id);
             if (sourceBoard) {
               sync.handleCardMove(card, sourceBoard, targetList).catch(console.error);
+            } else {
+              console.log(`Board ${board.id} not found in source boards`);
             }
           }
         }
