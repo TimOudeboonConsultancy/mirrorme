@@ -240,19 +240,37 @@ function validateTrelloWebhook(req, res, next) {
   // Only validate POST requests with HMAC
   if (req.method === 'POST') {
     const callbackURL = 'https://trello-sync-mirror-f28465526010.herokuapp.com/webhook/card-moved';
-    const base64Digest = crypto
-      .createHmac('sha1', process.env.TRELLO_API_SECRET)
-      .update(req.rawBody + callbackURL)
-      .digest('base64');
-    const doubleHash = crypto
-      .createHmac('sha1', process.env.TRELLO_API_SECRET)
-      .update(req.headers['x-trello-webhook'])
-      .digest('base64');
     
-    if (base64Digest === doubleHash) {
-      return next();
-    } else {
-      return res.status(401).send('Unauthorized');
+    console.log('Webhook Validation Debug:');
+    console.log('Raw Body:', req.rawBody);
+    console.log('Callback URL:', callbackURL);
+    console.log('Trello Webhook Header:', req.headers['x-trello-webhook']);
+    console.log('API Secret:', process.env.TRELLO_API_SECRET ? 'Present' : 'MISSING');
+
+    try {
+      const base64Digest = crypto
+        .createHmac('sha1', process.env.TRELLO_API_SECRET)
+        .update(req.rawBody + callbackURL)
+        .digest('base64');
+
+      const doubleHash = crypto
+        .createHmac('sha1', process.env.TRELLO_API_SECRET)
+        .update(req.headers['x-trello-webhook'])
+        .digest('base64');
+    
+      console.log('Calculated Base64 Digest:', base64Digest);
+      console.log('Calculated Double Hash:', doubleHash);
+      console.log('Comparison Result:', base64Digest === doubleHash);
+
+      if (base64Digest === doubleHash) {
+        return next();
+      } else {
+        console.error('Webhook validation failed');
+        return res.status(401).send('Unauthorized: Webhook validation failed');
+      }
+    } catch (error) {
+      console.error('Webhook validation error:', error);
+      return res.status(500).send('Internal Server Error');
     }
   }
 
@@ -330,4 +348,4 @@ sync.initialize().catch(console.error);
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
   console.log(`Trello sync service running on port ${port}`);
-});
+});callback

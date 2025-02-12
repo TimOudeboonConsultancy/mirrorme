@@ -6,6 +6,7 @@
     "start": "node index.js",
     "dev": "node index.js",
     "setup-webhooks": "node webhook-setup.js",
+    "cleanup-webhooks": "node webhook-cleanup.js",
     "test": "node test-requests.js"
   },
   "dependencies": {
