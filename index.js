@@ -140,7 +140,7 @@ class TrelloSync {
   }
 
   async handleCardMove(card, sourceBoard, targetList) {
-    console.log(`Detailed Card Move Debug:
+    console.log(`Detailed Card Move/Create Debug:
     Card ID: ${card.id}
     Card Name: ${card.name}
     Source Board: ${sourceBoard.name} (${sourceBoard.id})
@@ -175,8 +175,10 @@ class TrelloSync {
 
       try {
         const mirroredCard = await trelloApi.createCard(aggregateListId, {
-          ...card,
+          name: card.name,
           desc: `Original board: ${sourceBoard.name}\n\n${card.desc || ''}`,
+          due: card.due,
+          // Add any other card properties you want to copy
         });
         mirroredCardId = mirroredCard.id;
         this.cardMapping.set(cardMappingKey, mirroredCardId);
@@ -338,17 +340,25 @@ app.all('/webhook/card-moved', (req, res) => {
         console.log('Action Type:', action.type);
         console.log('Action Details:', JSON.stringify(action, null, 2));
 
-        if (action.type === 'updateCard' && action.data.listAfter) {
+        // Handle both createCard and updateCard events
+        if ((action.type === 'updateCard' || action.type === 'createCard') && 
+            action.data.list && 
+            action.data.board) {
+          
           const card = action.data.card;
           const board = action.data.board;
-          const targetList = action.data.listAfter;
+          const targetList = action.data.list;
           
           if (board.id === config.aggregateBoard) {
             sync.handleAggregateCardMove(card, targetList).catch(console.error);
           } else {
             const sourceBoard = config.sourceBoards.find(b => b.id === board.id);
             if (sourceBoard) {
-              sync.handleCardMove(card, sourceBoard, targetList).catch(console.error);
+              if (config.listNames.includes(targetList.name)) {
+                sync.handleCardMove(card, sourceBoard, targetList).catch(console.error);
+              } else {
+                console.log(`List ${targetList.name} not in configured lists`);
+              }
             } else {
               console.log(`Board ${board.id} not found in source boards`);
             }
