@@ -50,7 +50,6 @@ const trelloApi = {
     const url = `${this.baseUrl}${endpoint}?key=${config.apiKey}&token=${config.token}`;
     const response = await fetch(url, options);
     if (!response.ok) {
-      console.error(`API Request Error: ${response.status} ${response.statusText}`);
       throw new Error(`Trello API error: ${response.statusText}`);
     }
     return response.json();
@@ -348,4 +347,4 @@ sync.initialize().catch(console.error);
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
   console.log(`Trello sync service running on port ${port}`);
-});callback
+});
