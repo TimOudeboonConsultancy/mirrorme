@@ -413,4 +413,9 @@ app.all('/webhook/card-moved', validateTrelloWebhook, (req, res) => {
   } else {
     res.sendStatus(405); // Method Not Allowed
   }
+  const port = process.env.PORT || 3000;
+  app.listen(port, async () => {
+    console.log(`Trello sync service running on port ${port}`);
+    await trelloSync.initialize().catch(console.error);
+  });
 });
