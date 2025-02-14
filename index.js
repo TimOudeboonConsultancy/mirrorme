@@ -365,6 +365,7 @@ app.all('/webhook/card-moved', validateTrelloWebhook, (req, res) => {
   if (req.method === 'HEAD') {
     return res.sendStatus(200);
   }
+
   // Handle OPTIONS requests
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
@@ -386,12 +387,11 @@ app.all('/webhook/card-moved', validateTrelloWebhook, (req, res) => {
 
       // Handle both createCard and updateCard events
       if ((action.type === 'updateCard' || action.type === 'createCard') &&
-          action.data.list &&
-          action.data.board) {
+          action.data && action.data.board) {
 
         const card = action.data.card;
         const board = action.data.board;
-        const targetList = action.data.list;
+        const targetList = action.data.listAfter || action.data.list; // Try listAfter first, fall back to list
 
         if (board.id === config.aggregateBoard) {
           trelloSync.handleAggregateCardMove(card, targetList).catch(console.error);
@@ -413,11 +413,4 @@ app.all('/webhook/card-moved', validateTrelloWebhook, (req, res) => {
   } else {
     res.sendStatus(405); // Method Not Allowed
   }
-});
-
-// Start server and initialize sync
-const port = process.env.PORT || 3000;
-app.listen(port, async () => {
-  console.log(`Trello sync service running on port ${port}`);
-  await trelloSync.initialize().catch(console.error);
 });
