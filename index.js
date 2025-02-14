@@ -2,33 +2,6 @@ import express from 'express';
 import fetch from 'node-fetch';
 import crypto from 'crypto';
 
-const app = express();
-
-// Parse raw body for webhook validation
-app.use(express.json({
-  verify: (req, res, buf) => {
-    req.rawBody = buf.toString();
-  }
-}));
-
-// Add CORS support
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, HEAD, POST, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(200);
-  }
-  next();
-});
-
-// Add request logging
-app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
-  console.log('Headers:', req.headers);
-  next();
-});
-
 // Configuration
 const config = {
   apiKey: process.env.TRELLO_API_KEY,
@@ -107,7 +80,7 @@ class TrelloSync {
       console.log(`Fetching lists for board: ${board.name} (${board.id})`);
       const lists = await trelloApi.getLists(board.id);
       console.log(`Lists found for ${board.name}:`, lists.map(l => l.name));
-      
+
       for (const list of lists) {
         if (config.listNames.includes(list.name)) {
           const mappingKey = `${board.id}-${list.name}`;
@@ -121,7 +94,7 @@ class TrelloSync {
     console.log(`Fetching lists for aggregate board: ${config.aggregateBoard}`);
     const aggregateLists = await trelloApi.getLists(config.aggregateBoard);
     console.log('Aggregate board lists:', aggregateLists.map(l => l.name));
-    
+
     for (const list of aggregateLists) {
       if (config.listNames.includes(list.name)) {
         const mappingKey = `aggregate-${list.name}`;
@@ -161,13 +134,13 @@ class TrelloSync {
 
     const cardMappingKey = `${sourceBoard.id}-${card.id}`;
     let mirroredCardId = this.cardMapping.get(cardMappingKey);
-    
+
     console.log(`Existing Mirrored Card ID for ${cardMappingKey}: ${mirroredCardId}`);
 
     if (!mirroredCardId && isConfiguredList) {
       const aggregateListId = this.listMapping.get(`aggregate-${targetList.name}`);
       console.log(`Attempting to create mirrored card in list: ${aggregateListId}`);
-      
+
       if (!aggregateListId) {
         console.error(`No aggregate list found for: aggregate-${targetList.name}`);
         return;
@@ -178,7 +151,6 @@ class TrelloSync {
           name: card.name,
           desc: `Original board: ${sourceBoard.name}\n\n${card.desc || ''}`,
           due: card.due,
-          // Add any other card properties you want to copy
         });
         mirroredCardId = mirroredCard.id;
         this.cardMapping.set(cardMappingKey, mirroredCardId);
@@ -202,70 +174,108 @@ class TrelloSync {
   }
 
   async handleAggregateCardMove(card, targetList) {
-  console.log('=== Starting handleAggregateCardMove ===');
-  console.log(`Processing card: ${card.name} (${card.id})`);
-  console.log(`Target list: ${targetList.name}`);
+    console.log('=== Starting handleAggregateCardMove ===');
+    console.log(`Processing card: ${card.name} (${card.id})`);
+    console.log(`Target list: ${targetList.name}`);
 
-  // Extract original board info from card description
-  const boardMatch = card.desc.match(/Original board: (.*?)(?:\n|$)/);
-  if (!boardMatch) {
-    console.log('No original board info found in card description:', card.desc);
-    return;
-  }
-
-  const originalBoardName = boardMatch[1];
-  console.log(`Original board name found: ${originalBoardName}`);
-
-  // Find the source board configuration
-  const sourceBoard = config.sourceBoards.find(b => b.name === originalBoardName);
-  if (!sourceBoard) {
-    console.log(`Source board not found for name: ${originalBoardName}`);
-    return;
-  }
-  console.log(`Found source board: ${sourceBoard.name} (${sourceBoard.id})`);
-
-  // Find the original card ID from the mapping
-  let originalCardId = null;
-  for (const [mappingKey, mirroredId] of this.cardMapping.entries()) {
-    if (mirroredId === card.id) {
-      const [boardId, cardId] = mappingKey.split('-');
-      if (boardId === sourceBoard.id) {
-        originalCardId = cardId;
-        break;
+    // Check if card has a description
+    if (!card.desc) {
+      console.log('Card has no description, fetching full card details...');
+      try {
+        card = await trelloApi.request(`/cards/${card.id}`);
+      } catch (error) {
+        console.error('Error fetching card details:', error);
+        return;
       }
     }
-  }
 
-  if (!originalCardId) {
-    console.log('Original card not found in mapping. Current mapping:', 
-      Array.from(this.cardMapping.entries()));
-    return;
-  }
-  console.log(`Found original card ID: ${originalCardId}`);
+    // Extract original board info from card description
+    const boardMatch = card.desc ? card.desc.match(/Original board: (.*?)(?:\n|$)/) : null;
+    if (!boardMatch) {
+      console.log('No original board info found in card description:', card.desc);
+      return;
+    }
 
-  // Get the corresponding list ID on the source board
-  const sourceListId = this.listMapping.get(`${sourceBoard.id}-${targetList.name}`);
-  if (!sourceListId) {
-    console.log(`No matching list found on source board for: ${targetList.name}`);
-    console.log('Current list mapping:', Array.from(this.listMapping.entries()));
-    return;
-  }
-  console.log(`Found source list ID: ${sourceListId}`);
+    const originalBoardName = boardMatch[1];
+    console.log(`Original board name found: ${originalBoardName}`);
 
-  try {
-    // Update the card on the original board
-    await trelloApi.updateCard(originalCardId, {
-      idList: sourceListId,
-    });
-    console.log(`Successfully updated original card ${originalCardId} to list ${sourceListId}`);
-  } catch (error) {
-    console.error('Error updating original card:', error);
-    throw error; // Rethrow to be handled by the caller
+    // Find the source board configuration
+    const sourceBoard = config.sourceBoards.find(b => b.name === originalBoardName);
+    if (!sourceBoard) {
+      console.log(`Source board not found for name: ${originalBoardName}`);
+      return;
+    }
+    console.log(`Found source board: ${sourceBoard.name} (${sourceBoard.id})`);
+
+    // Find the original card ID from the mapping
+    let originalCardId = null;
+    for (const [mappingKey, mirroredId] of this.cardMapping.entries()) {
+      if (mirroredId === card.id) {
+        const [boardId, cardId] = mappingKey.split('-');
+        if (boardId === sourceBoard.id) {
+          originalCardId = cardId;
+          break;
+        }
+      }
+    }
+
+    if (!originalCardId) {
+      console.log('Original card not found in mapping. Current mapping:',
+          Array.from(this.cardMapping.entries()));
+      return;
+    }
+    console.log(`Found original card ID: ${originalCardId}`);
+
+    // Get the corresponding list ID on the source board
+    const sourceListId = this.listMapping.get(`${sourceBoard.id}-${targetList.name}`);
+    if (!sourceListId) {
+      console.log(`No matching list found on source board for: ${targetList.name}`);
+      console.log('Current list mapping:', Array.from(this.listMapping.entries()));
+      return;
+    }
+    console.log(`Found source list ID: ${sourceListId}`);
+
+    try {
+      // Update the card on the original board
+      await trelloApi.updateCard(originalCardId, {
+        idList: sourceListId,
+      });
+      console.log(`Successfully updated original card ${originalCardId} to list ${sourceListId}`);
+    } catch (error) {
+      console.error('Error updating original card:', error);
+      throw error;
+    }
   }
 }
 
-// Initialize sync instance
-const sync = new TrelloSync();
+// Initialize express app and sync instance
+const app = express();
+const trelloSync = new TrelloSync();
+
+// Parse raw body for webhook validation
+app.use(express.json({
+  verify: (req, res, buf) => {
+    req.rawBody = buf.toString();
+  }
+}));
+
+// Add CORS support
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, HEAD, POST, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
+// Add request logging
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  console.log('Headers:', req.headers);
+  next();
+});
 
 // Webhook validation function
 function validateTrelloWebhook(req, res, next) {
@@ -277,7 +287,7 @@ function validateTrelloWebhook(req, res, next) {
   // Only validate POST requests with HMAC
   if (req.method === 'POST') {
     const callbackURL = 'https://trello-sync-mirror-f28465526010.herokuapp.com/webhook/card-moved';
-    
+
     try {
       // Extensive logging for debugging
       console.log('Webhook Validation Detailed Debug:');
@@ -310,8 +320,8 @@ function validateTrelloWebhook(req, res, next) {
       // Compute HMAC signature
       const hmac = crypto.createHmac('sha1', process.env.TRELLO_API_SECRET);
       const computedSignature = hmac
-        .update(req.rawBody + callbackURL)
-        .digest('base64');
+          .update(req.rawBody + callbackURL)
+          .digest('base64');
 
       console.log('Received Signature:', trelloSignature);
       console.log('Computed Signature:', computedSignature);
@@ -346,7 +356,7 @@ app.get('/', (req, res) => {
   res.send('Trello Sync Service is running!');
 });
 
-app.all('/webhook/card-moved', (req, res) => {
+app.all('/webhook/card-moved', validateTrelloWebhook, (req, res) => {
   console.log(`Webhook request received: ${req.method}`);
   console.log('Webhook headers:', JSON.stringify(req.headers, null, 2));
   console.log('Webhook body:', JSON.stringify(req.body, null, 2));
@@ -355,7 +365,6 @@ app.all('/webhook/card-moved', (req, res) => {
   if (req.method === 'HEAD') {
     return res.sendStatus(200);
   }
-
   // Handle OPTIONS requests
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
@@ -366,52 +375,49 @@ app.all('/webhook/card-moved', (req, res) => {
     return res.status(200).send('Webhook endpoint is active');
   }
 
-  // Validate and handle POST requests
+  // Handle POST requests
   if (req.method === 'POST') {
-    validateTrelloWebhook(req, res, () => {
-      if (req.body.action) {
-        const { action } = req.body;
-        
-        // Enhanced logging for action details
-        console.log('Action Type:', action.type);
-        console.log('Action Details:', JSON.stringify(action, null, 2));
+    if (req.body.action) {
+      const { action } = req.body;
 
-        // Handle both createCard and updateCard events
-        if ((action.type === 'updateCard' || action.type === 'createCard') && 
-            action.data.list && 
-            action.data.board) {
-          
-          const card = action.data.card;
-          const board = action.data.board;
-          const targetList = action.data.list;
-          
-          if (board.id === config.aggregateBoard) {
-            sync.handleAggregateCardMove(card, targetList).catch(console.error);
-          } else {
-            const sourceBoard = config.sourceBoards.find(b => b.id === board.id);
-            if (sourceBoard) {
-              if (config.listNames.includes(targetList.name)) {
-                sync.handleCardMove(card, sourceBoard, targetList).catch(console.error);
-              } else {
-                console.log(`List ${targetList.name} not in configured lists`);
-              }
+      // Enhanced logging for action details
+      console.log('Action Type:', action.type);
+      console.log('Action Details:', JSON.stringify(action, null, 2));
+
+      // Handle both createCard and updateCard events
+      if ((action.type === 'updateCard' || action.type === 'createCard') &&
+          action.data.list &&
+          action.data.board) {
+
+        const card = action.data.card;
+        const board = action.data.board;
+        const targetList = action.data.list;
+
+        if (board.id === config.aggregateBoard) {
+          trelloSync.handleAggregateCardMove(card, targetList).catch(console.error);
+        } else {
+          const sourceBoard = config.sourceBoards.find(b => b.id === board.id);
+          if (sourceBoard) {
+            if (config.listNames.includes(targetList.name)) {
+              trelloSync.handleCardMove(card, sourceBoard, targetList).catch(console.error);
             } else {
-              console.log(`Board ${board.id} not found in source boards`);
+              console.log(`List ${targetList.name} not in configured lists`);
             }
+          } else {
+            console.log(`Board ${board.id} not found in source boards`);
           }
         }
       }
-      res.sendStatus(200);
-    });
+    }
+    res.sendStatus(200);
   } else {
     res.sendStatus(405); // Method Not Allowed
   }
 });
 
-// Initialize sync on startup
-sync.initialize().catch(console.error);
-
+// Start server and initialize sync
 const port = process.env.PORT || 3000;
-app.listen(port, () => {
+app.listen(port, async () => {
   console.log(`Trello sync service running on port ${port}`);
+  await trelloSync.initialize().catch(console.error);
 });
