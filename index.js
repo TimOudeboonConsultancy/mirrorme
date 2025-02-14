@@ -391,7 +391,12 @@ app.all('/webhook/card-moved', validateTrelloWebhook, (req, res) => {
 
         const card = action.data.card;
         const board = action.data.board;
-        const targetList = action.data.listAfter || action.data.list; // Try listAfter first, fall back to list
+        console.log('Available list data:', {
+          listAfter: action.data.listAfter,
+          list: action.data.list
+        });
+        const targetList = action.data.listAfter || action.data.list;
+        console.log('Selected target list:', targetList);
 
         if (board.id === config.aggregateBoard) {
           trelloSync.handleAggregateCardMove(card, targetList).catch(console.error);
@@ -413,9 +418,11 @@ app.all('/webhook/card-moved', validateTrelloWebhook, (req, res) => {
   } else {
     res.sendStatus(405); // Method Not Allowed
   }
-  const port = process.env.PORT || 3000;
-  app.listen(port, async () => {
-    console.log(`Trello sync service running on port ${port}`);
-    await trelloSync.initialize().catch(console.error);
-  });
+});
+
+// Start server and initialize sync
+const port = process.env.PORT || 3000;
+app.listen(port, async () => {
+  console.log(`Trello sync service running on port ${port}`);
+  await trelloSync.initialize().catch(console.error);
 });
