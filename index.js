@@ -202,29 +202,65 @@ class TrelloSync {
   }
 
   async handleAggregateCardMove(card, targetList) {
-    console.log(`Handling aggregate card move for card ${card.id}`);
-    const boardMatch = card.desc.match(/Original board: (.*?)(?:\n|$)/);
-    if (!boardMatch) {
-      console.log('No original board info found in card description');
-      return;
+  console.log('=== Starting handleAggregateCardMove ===');
+  console.log(`Processing card: ${card.name} (${card.id})`);
+  console.log(`Target list: ${targetList.name}`);
+
+  // Extract original board info from card description
+  const boardMatch = card.desc.match(/Original board: (.*?)(?:\n|$)/);
+  if (!boardMatch) {
+    console.log('No original board info found in card description:', card.desc);
+    return;
+  }
+
+  const originalBoardName = boardMatch[1];
+  console.log(`Original board name found: ${originalBoardName}`);
+
+  // Find the source board configuration
+  const sourceBoard = config.sourceBoards.find(b => b.name === originalBoardName);
+  if (!sourceBoard) {
+    console.log(`Source board not found for name: ${originalBoardName}`);
+    return;
+  }
+  console.log(`Found source board: ${sourceBoard.name} (${sourceBoard.id})`);
+
+  // Find the original card ID from the mapping
+  let originalCardId = null;
+  for (const [mappingKey, mirroredId] of this.cardMapping.entries()) {
+    if (mirroredId === card.id) {
+      const [boardId, cardId] = mappingKey.split('-');
+      if (boardId === sourceBoard.id) {
+        originalCardId = cardId;
+        break;
+      }
     }
-    const sourceBoard = config.sourceBoards.find(b => b.name === boardMatch[1]);
-    if (!sourceBoard) {
-      console.log('Source board not found:', boardMatch[1]);
-      return;
-    }
-    const originalCardId = Array.from(this.cardMapping.entries())
-      .find(([_, mirroredId]) => mirroredId === card.id)?.[0]
-      ?.split('-')[1];
-    if (originalCardId) {
-      const sourceListId = this.listMapping.get(`${sourceBoard.id}-${targetList.name}`);
-      await trelloApi.updateCard(originalCardId, {
-        idList: sourceListId,
-      });
-      console.log(`Updated original card ${originalCardId}`);
-    } else {
-      console.log('Original card not found in mapping');
-    }
+  }
+
+  if (!originalCardId) {
+    console.log('Original card not found in mapping. Current mapping:', 
+      Array.from(this.cardMapping.entries()));
+    return;
+  }
+  console.log(`Found original card ID: ${originalCardId}`);
+
+  // Get the corresponding list ID on the source board
+  const sourceListId = this.listMapping.get(`${sourceBoard.id}-${targetList.name}`);
+  if (!sourceListId) {
+    console.log(`No matching list found on source board for: ${targetList.name}`);
+    console.log('Current list mapping:', Array.from(this.listMapping.entries()));
+    return;
+  }
+  console.log(`Found source list ID: ${sourceListId}`);
+
+  try {
+    // Update the card on the original board
+    await trelloApi.updateCard(originalCardId, {
+      idList: sourceListId,
+    });
+    console.log(`Successfully updated original card ${originalCardId} to list ${sourceListId}`);
+  } catch (error) {
+    console.error('Error updating original card:', error);
+    throw error; // Rethrow to be handled by the caller
   }
 }
 
