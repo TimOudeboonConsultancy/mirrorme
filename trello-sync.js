@@ -55,6 +55,7 @@ export class TrelloSync {
             console.log('Card Details:', JSON.stringify(card, null, 2));
             console.log('Source Board:', JSON.stringify(sourceBoard, null, 2));
             console.log('Target List:', JSON.stringify(targetList, null, 2));
+            console.log('Current List Mappings:', Array.from(this.listMapping.entries()));
 
             const isConfiguredList = config.listNames.includes(targetList.name);
             console.log(`Is target list configured? ${isConfiguredList}`);
