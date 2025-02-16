@@ -126,10 +126,6 @@ export function createWebhookRoutes(app, trelloSync) {
                 after: action.data.listAfter,
                 before: action.data.listBefore
             });
-            console.log('Member Creator:', {
-                id: action.memberCreator?.id,
-                username: action.memberCreator?.username
-            });
 
             // Log the current state of trelloSync
             console.log('\n=== TrelloSync State ===');
@@ -139,10 +135,15 @@ export function createWebhookRoutes(app, trelloSync) {
             // Handle both createCard and updateCard events
             if ((action.type === 'createCard' ||
                     action.type === 'updateCard' ||
-                    action.type === 'addLabelToCard') &&
+                    action.type === 'addLabelToCard' ||
+                    action.type === 'deleteCard') &&
                 action.data && action.data.board) {
 
                 console.log('\n=== Processing Card Action ===');
+                console.log('Action Type:', action.type);
+                console.log('Card Data:', action.data.card);
+                console.log('Board Data:', action.data.board);
+                console.log('List Data:', action.data.list || action.data.listAfter);
 
                 const card = action.data.card;
                 const board = action.data.board;
