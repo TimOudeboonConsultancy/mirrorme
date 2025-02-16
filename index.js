@@ -72,9 +72,9 @@ class TrelloSync {
 
     // Define color mapping for different boards
     this.boardColorMap = {
-      'prive': 'green_dark',
+      'prive': 'green_light',
       'mba': 'blue_dark',
-      'opdracht': 'purple_dark',
+      'opdracht': 'red_light',
       'tim-oudeboon-bv': 'orange_dark'
     };
   }
