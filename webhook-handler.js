@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { config } from './config.js';
 import { setTimeout } from 'timers/promises';
+import { trelloApi } from './trello-api.js';
 
 // Timeout utility function
 async function withTimeout(asyncFunc, ms = 10000, errorMessage = 'Operation timed out') {
@@ -94,76 +95,122 @@ export function createWebhookRoutes(app, trelloSync) {
         // Immediately respond to the webhook
         res.sendStatus(200);
 
-        // Log the full payload for debugging
-        console.log('Webhook Payload:', JSON.stringify(req.body, null, 2));
-
-        // Process webhook asynchronously
         try {
-            if (req.body.action) {
-                const { action } = req.body;
+            console.log('\n=== New Webhook Event ===');
+            console.log('Timestamp:', new Date().toISOString());
 
-                // Enhanced logging for action details
-                console.log('Action Type:', action.type);
-                console.log('Action Details:', JSON.stringify(action, null, 2));
+            if (!req.body.action) {
+                console.log('No action in webhook payload');
+                return;
+            }
 
-                // Handle both createCard and updateCard events
-                if ((action.type === 'createCard' || action.type === 'updateCard') &&
-                    action.data && action.data.board) {
+            const { action } = req.body;
 
-                    const card = action.data.card;
-                    const board = action.data.board;
-                    // For label events, we need to fetch the list
-                    let targetList;
-                    if (action.type === 'addLabelToCard') {
-                        const fullCard = await trelloApi.request(`/cards/${card.id}`);
-                        const fullList = await trelloApi.request(`/lists/${fullCard.idList}`);
-                        targetList = fullList;
-                    } else {
-                        targetList = action.data.listAfter || action.data.list;
-                    }
+            // Enhanced logging for all incoming webhook data
+            console.log('\n=== Webhook Action Details ===');
+            console.log('Action Type:', action.type);
+            console.log('Action ID:', action.id);
+            console.log('Board Info:', {
+                id: action.data.board?.id,
+                name: action.data.board?.name,
+                isSourceBoard: config.sourceBoards.some(b => b.id === action.data.board?.id),
+                isAggregateBoard: action.data.board?.id === config.aggregateBoard
+            });
+            console.log('Card Info:', {
+                id: action.data.card?.id,
+                name: action.data.card?.name,
+                shortLink: action.data.card?.shortLink
+            });
+            console.log('List Info:', {
+                current: action.data.list,
+                after: action.data.listAfter,
+                before: action.data.listBefore
+            });
+            console.log('Member Creator:', {
+                id: action.memberCreator?.id,
+                username: action.memberCreator?.username
+            });
 
-                    if (!targetList) {
-                        console.log('No target list found in webhook data');
-                        return;
-                    }
+            // Log the current state of trelloSync
+            console.log('\n=== TrelloSync State ===');
+            console.log('List Mappings:', Array.from(trelloSync.listMapping.entries()));
+            console.log('Card Mappings:', Array.from(trelloSync.cardMapping.entries()));
 
-                    console.log('Available list data:', {
-                        listAfter: action.data.listAfter,
-                        list: action.data.list
-                    });
-                    console.log('Selected target list:', targetList);
+            // Handle both createCard and updateCard events
+            if ((action.type === 'createCard' ||
+                    action.type === 'updateCard' ||
+                    action.type === 'addLabelToCard') &&
+                action.data && action.data.board) {
 
-                    // Add timeout handling for card move operations
-                    if (board.id === config.aggregateBoard) {
-                        await withTimeout(
-                            () => trelloSync.handleAggregateCardMove(card, targetList),
-                            15000,
-                            `Timeout in handleAggregateCardMove for card ${card.id}`
-                        );
-                    } else {
-                        const sourceBoard = config.sourceBoards.find(b => b.id === board.id);
-                        if (sourceBoard) {
-                            if (config.listNames.includes(targetList.name)) {
-                                await withTimeout(
-                                    () => trelloSync.handleCardMove(card, sourceBoard, targetList),
-                                    15000,
-                                    `Timeout in handleCardMove for card ${card.id}`
-                                );
-                            } else {
-                                console.log(`List ${targetList.name} not in configured lists`);
-                            }
+                console.log('\n=== Processing Card Action ===');
+
+                const card = action.data.card;
+                const board = action.data.board;
+                let targetList;
+
+                // Enhanced list determination logic
+                if (action.type === 'addLabelToCard') {
+                    console.log('Fetching full card details for label action...');
+                    const fullCard = await trelloApi.request(`/cards/${card.id}`);
+                    console.log('Full card details:', fullCard);
+                    const fullList = await trelloApi.request(`/lists/${fullCard.idList}`);
+                    console.log('Full list details:', fullList);
+                    targetList = fullList;
+                } else {
+                    targetList = action.data.listAfter || action.data.list;
+                }
+
+                if (!targetList) {
+                    console.log('No target list found in webhook data');
+                    return;
+                }
+
+                console.log('Final target list determination:', {
+                    id: targetList.id,
+                    name: targetList.name,
+                    isConfiguredList: config.listNames.includes(targetList.name)
+                });
+
+                // Handle card operations with enhanced logging
+                if (board.id === config.aggregateBoard) {
+                    console.log('\n=== Processing Aggregate Board Action ===');
+                    await withTimeout(
+                        () => trelloSync.handleAggregateCardMove(card, targetList),
+                        15000,
+                        `Timeout in handleAggregateCardMove for card ${card.id}`
+                    );
+                } else {
+                    const sourceBoard = config.sourceBoards.find(b => b.id === board.id);
+                    if (sourceBoard) {
+                        console.log('\n=== Processing Source Board Action ===');
+                        console.log('Source Board:', sourceBoard);
+
+                        if (config.listNames.includes(targetList.name)) {
+                            console.log('List is configured, handling card move...');
+                            await withTimeout(
+                                () => trelloSync.handleCardMove(card, sourceBoard, targetList),
+                                15000,
+                                `Timeout in handleCardMove for card ${card.id}`
+                            );
                         } else {
-                            console.log(`Board ${board.id} not found in source boards`);
+                            console.log(`List "${targetList.name}" not in configured lists:`, config.listNames);
                         }
+                    } else {
+                        console.log(`Board ${board.id} not found in source boards:`,
+                            config.sourceBoards.map(b => ({ id: b.id, name: b.name })));
                     }
                 }
+            } else {
+                console.log('Action type not handled:', action.type);
             }
         } catch (error) {
-            console.error('Webhook processing error:', error);
-            // Log specific timeout errors
+            console.error('\n=== Webhook Processing Error ===');
+            console.error('Error:', error);
             if (error.message.includes('Timeout')) {
-                console.error('A webhook operation timed out:', error.message);
+                console.error('Operation timed out:', error.message);
             }
+            // Log the full error stack for debugging
+            console.error('Stack:', error.stack);
         }
     });
 }
