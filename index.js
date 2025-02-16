@@ -151,6 +151,7 @@ class TrelloSync {
           name: card.name,
           desc: `Original board: ${sourceBoard.name}\n\n${card.desc || ''}`,
           due: card.due,
+          idLabels: card.idLabels // Copy labels when creating card
         });
         mirroredCardId = mirroredCard.id;
         this.cardMapping.set(cardMappingKey, mirroredCardId);
@@ -163,6 +164,7 @@ class TrelloSync {
         const aggregateListId = this.listMapping.get(`aggregate-${targetList.name}`);
         await trelloApi.updateCard(mirroredCardId, {
           idList: aggregateListId,
+          idLabels: card.idLabels // Update labels when moving card
         });
         console.log(`Updated mirrored card ${mirroredCardId}`);
       } else {
