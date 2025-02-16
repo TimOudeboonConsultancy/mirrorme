@@ -122,15 +122,8 @@ class TrelloSync {
     Configured Source Boards: ${JSON.stringify(config.sourceBoards.map(b => b.name))}
     Aggregate Board: ${config.aggregateBoard}`);
 
-    // Check if the target list name is in the configured list names
     const isConfiguredList = config.listNames.includes(targetList.name);
     console.log(`Is target list configured? ${isConfiguredList}`);
-
-    // Log the list mapping to verify correct list IDs
-    console.log('List Mapping:');
-    for (const [key, value] of this.listMapping.entries()) {
-      console.log(`  ${key}: ${value}`);
-    }
 
     const cardMappingKey = `${sourceBoard.id}-${card.id}`;
     let mirroredCardId = this.cardMapping.get(cardMappingKey);
@@ -147,12 +140,17 @@ class TrelloSync {
       }
 
       try {
+        // Fetch full card details to ensure we get all labels
+        const fullCard = await trelloApi.request(`/cards/${card.id}`);
+        console.log('Full card details:', JSON.stringify(fullCard, null, 2));
+
         const mirroredCard = await trelloApi.createCard(aggregateListId, {
           name: card.name,
           desc: `Original board: ${sourceBoard.name}\n\n${card.desc || ''}`,
           due: card.due,
-          idLabels: card.idLabels // Copy labels when creating card
+          idLabels: fullCard.labels.map(label => label.id) // Use label IDs from full card details
         });
+
         mirroredCardId = mirroredCard.id;
         this.cardMapping.set(cardMappingKey, mirroredCardId);
         console.log(`Created mirrored card ${mirroredCardId}`);
@@ -161,10 +159,13 @@ class TrelloSync {
       }
     } else if (mirroredCardId) {
       if (isConfiguredList) {
+        // Fetch full card details to ensure we get all labels
+        const fullCard = await trelloApi.request(`/cards/${card.id}`);
+
         const aggregateListId = this.listMapping.get(`aggregate-${targetList.name}`);
         await trelloApi.updateCard(mirroredCardId, {
           idList: aggregateListId,
-          idLabels: card.idLabels // Update labels when moving card
+          idLabels: fullCard.labels.map(label => label.id) // Use label IDs from full card details
         });
         console.log(`Updated mirrored card ${mirroredCardId}`);
       } else {
