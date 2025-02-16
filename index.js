@@ -144,16 +144,52 @@ class TrelloSync {
         const fullCard = await trelloApi.request(`/cards/${card.id}`);
         console.log('Full card details:', JSON.stringify(fullCard, null, 2));
 
+        // Create a new origin label on the aggregate board matching the source board
+        const originLabelName = `Origin:${sourceBoard.name}`;
+        let originLabelId = null;
+
+        try {
+          // Try to get existing label
+          const labels = await trelloApi.request(`/boards/${config.aggregateBoard}/labels`);
+          const existingLabel = labels.find(l => l.name === originLabelName);
+
+          if (existingLabel) {
+            originLabelId = existingLabel.id;
+            console.log(`Found existing label: ${originLabelName}, ID: ${originLabelId}`);
+          } else {
+            // Create a new label if it doesn't exist
+            const newLabel = await trelloApi.request(`/labels`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                name: originLabelName,
+                color: 'blue_dark', // You can customize this color
+                idBoard: config.aggregateBoard
+              })
+            });
+            originLabelId = newLabel.id;
+            console.log(`Created new label: ${originLabelName}, ID: ${originLabelId}`);
+          }
+        } catch (labelError) {
+          console.error('Error handling label:', labelError);
+        }
+
+        // Combine original card's labels with the new origin label
+        const labelIds = fullCard.labels.map(label => label.id);
+        if (originLabelId) {
+          labelIds.push(originLabelId);
+        }
+
         const mirroredCard = await trelloApi.createCard(aggregateListId, {
           name: card.name,
           desc: `Original board: ${sourceBoard.name}\n\n${card.desc || ''}`,
           due: card.due,
-          idLabels: fullCard.labels.map(label => label.id) // Use label IDs from full card details
+          idLabels: labelIds
         });
 
         mirroredCardId = mirroredCard.id;
         this.cardMapping.set(cardMappingKey, mirroredCardId);
-        console.log(`Created mirrored card ${mirroredCardId}`);
+        console.log(`Created mirrored card ${mirroredCardId} with labels: ${labelIds.join(', ')}`);
       } catch (error) {
         console.error('Error creating mirrored card:', error);
       }
@@ -163,9 +199,10 @@ class TrelloSync {
         const fullCard = await trelloApi.request(`/cards/${card.id}`);
 
         const aggregateListId = this.listMapping.get(`aggregate-${targetList.name}`);
+
         await trelloApi.updateCard(mirroredCardId, {
           idList: aggregateListId,
-          idLabels: fullCard.labels.map(label => label.id) // Use label IDs from full card details
+          idLabels: fullCard.labels.map(label => label.id)
         });
         console.log(`Updated mirrored card ${mirroredCardId}`);
       } else {

@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "clear-boards": "node clear-project-boards.js",
     "start": "node index.js",
     "dev": "node index.js",
     "setup-webhooks": "node webhook-setup.js",
