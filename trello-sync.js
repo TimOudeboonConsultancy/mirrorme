@@ -59,11 +59,21 @@ export class TrelloSync {
 
     async handleCardMove(card, sourceBoard, targetList) {
         try {
-            console.log(`Processing card move: 
-        Card Name: ${card.name}
-        Card ID: ${card.id}
-        Source Board: ${sourceBoard.name} (${sourceBoard.id})
-        Target List: ${targetList.name}`);
+            console.log('=== Detailed Card Move Debugging ===');
+            console.log('Card Details:', JSON.stringify(card, null, 2));
+            console.log('Source Board:', JSON.stringify(sourceBoard, null, 2));
+            console.log('Target List:', JSON.stringify(targetList, null, 2));
+            console.log('Configuration:', JSON.stringify({
+                sourceBoards: config.sourceBoards,
+                listNames: config.listNames,
+                aggregateBoard: config.aggregateBoard
+            }, null, 2));
+
+            // Log the current list mappings
+            console.log('Current List Mappings:');
+            for (const [key, value] of this.listMapping.entries()) {
+                console.log(`  ${key}: ${value}`);
+            }
 
             const isConfiguredList = config.listNames.includes(targetList.name);
             console.log(`Is target list configured? ${isConfiguredList}`);
@@ -75,6 +85,7 @@ export class TrelloSync {
 
             if (!mirroredCardId && isConfiguredList) {
                 const aggregateListId = this.listMapping.get(`aggregate-${targetList.name}`);
+                console.log(`Aggregate List ID for ${targetList.name}: ${aggregateListId}`);
 
                 if (!aggregateListId) {
                     console.error(`No aggregate list found for: aggregate-${targetList.name}`);
@@ -84,6 +95,7 @@ export class TrelloSync {
                 try {
                     // Fetch full card details
                     const fullCard = await trelloApi.request(`/cards/${card.id}`);
+                    console.log('Full Card Details:', JSON.stringify(fullCard, null, 2));
 
                     // Create the origin label name
                     const originLabelName = `Origin:${sourceBoard.name}`;
@@ -92,6 +104,8 @@ export class TrelloSync {
                     try {
                         // Fetch labels for the aggregate board
                         const labels = await trelloApi.request(`/boards/${config.aggregateBoard}/labels`);
+                        console.log('Existing Labels:', JSON.stringify(labels, null, 2));
+
                         let existingLabel = labels.find(l => l.name === originLabelName);
 
                         // Determine the color for the new label
@@ -109,8 +123,10 @@ export class TrelloSync {
                             });
 
                             originLabelId = newLabel.id;
+                            console.log(`Created new label: ${originLabelName} with color ${labelColor}, ID: ${originLabelId}`);
                         } else {
                             originLabelId = existingLabel.id;
+                            console.log(`Using existing label: ${originLabelName}, ID: ${originLabelId}`);
                         }
                     } catch (labelError) {
                         console.error('Error handling label:', labelError);
@@ -131,7 +147,7 @@ export class TrelloSync {
 
                     mirroredCardId = mirroredCard.id;
                     this.cardMapping.set(cardMappingKey, mirroredCardId);
-                    console.log(`Created mirrored card ${mirroredCardId}`);
+                    console.log(`Created mirrored card ${mirroredCardId} with labels: ${labelIds.join(', ')}`);
                 } catch (createError) {
                     console.error('Error creating mirrored card:', createError);
                 }
