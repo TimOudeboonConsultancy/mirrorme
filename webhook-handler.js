@@ -107,18 +107,22 @@ export function createWebhookRoutes(app, trelloSync) {
                 console.log('Action Details:', JSON.stringify(action, null, 2));
 
                 // Handle both createCard and updateCard events
-                if ((action.type === 'updateCard' || action.type === 'createCard') &&
+                if ((action.type === 'createCard' || action.type === 'updateCard') &&
                     action.data && action.data.board) {
 
                     const card = action.data.card;
                     const board = action.data.board;
+                    const targetList = action.data.listAfter || action.data.list;
+
+                    if (!targetList) {
+                        console.log('No target list found in webhook data');
+                        return;
+                    }
 
                     console.log('Available list data:', {
                         listAfter: action.data.listAfter,
                         list: action.data.list
                     });
-
-                    const targetList = action.data.listAfter || action.data.list;
                     console.log('Selected target list:', targetList);
 
                     // Add timeout handling for card move operations

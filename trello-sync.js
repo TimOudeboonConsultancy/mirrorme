@@ -5,14 +5,7 @@ export class TrelloSync {
     constructor() {
         this.listMapping = new Map();
         this.cardMapping = new Map();
-
-        // Define color mapping for different boards
-        this.boardColorMap = {
-            'prive': 'green_light',
-            'mba': 'blue_dark',
-            'opdracht': 'red_light',
-            'tim-oudeboon-bv': 'orange_dark'
-        };
+        this.boardColorMap = config.boardMapping;
     }
 
     async initialize() {
@@ -48,7 +41,6 @@ export class TrelloSync {
             }
         }
 
-        // Log final list mapping for verification
         console.log('Final List Mapping:');
         for (const [key, value] of this.listMapping.entries()) {
             console.log(`  ${key}: ${value}`);
@@ -63,17 +55,6 @@ export class TrelloSync {
             console.log('Card Details:', JSON.stringify(card, null, 2));
             console.log('Source Board:', JSON.stringify(sourceBoard, null, 2));
             console.log('Target List:', JSON.stringify(targetList, null, 2));
-            console.log('Configuration:', JSON.stringify({
-                sourceBoards: config.sourceBoards,
-                listNames: config.listNames,
-                aggregateBoard: config.aggregateBoard
-            }, null, 2));
-
-            // Log the current list mappings
-            console.log('Current List Mappings:');
-            for (const [key, value] of this.listMapping.entries()) {
-                console.log(`  ${key}: ${value}`);
-            }
 
             const isConfiguredList = config.listNames.includes(targetList.name);
             console.log(`Is target list configured? ${isConfiguredList}`);
@@ -109,7 +90,7 @@ export class TrelloSync {
                         let existingLabel = labels.find(l => l.name === originLabelName);
 
                         // Determine the color for the new label
-                        const labelColor = this.boardColorMap[sourceBoard.name] || 'blue_dark';
+                        const labelColor = this.boardColorMap[sourceBoard.name] || 'blue';
 
                         if (!existingLabel) {
                             // Create a new label if it doesn't exist
