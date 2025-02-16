@@ -3,25 +3,13 @@ import { config } from './config.js';
 import { setTimeout } from 'timers/promises';
 
 // Timeout utility function
-async function withTimeout(promise, ms = 10000, errorMessage = 'Operation timed out') {
-    let timeoutId;
-    const timeoutPromise = new Promise((_, reject) => {
-        timeoutId = setTimeout(() => {
-            reject(new Error(errorMessage));
-        }, ms);
-    });
-
-    try {
-        const result = await Promise.race([
-            promise,
-            timeoutPromise
-        ]);
-        clearTimeout(timeoutId);
-        return result;
-    } catch (error) {
-        clearTimeout(timeoutId);
-        throw error;
-    }
+async function withTimeout(asyncFunc, ms = 10000, errorMessage = 'Operation timed out') {
+    return Promise.race([
+        asyncFunc,
+        new Promise((_, reject) =>
+            setTimeout(ms).then(() => reject(new Error(errorMessage)))
+        )
+    ]);
 }
 
 export function validateTrelloWebhook(req, res, next) {
@@ -136,7 +124,7 @@ export function createWebhookRoutes(app, trelloSync) {
                     // Add timeout handling for card move operations
                     if (board.id === config.aggregateBoard) {
                         await withTimeout(
-                            trelloSync.handleAggregateCardMove(card, targetList),
+                            () => trelloSync.handleAggregateCardMove(card, targetList),
                             15000,
                             `Timeout in handleAggregateCardMove for card ${card.id}`
                         );
@@ -145,7 +133,7 @@ export function createWebhookRoutes(app, trelloSync) {
                         if (sourceBoard) {
                             if (config.listNames.includes(targetList.name)) {
                                 await withTimeout(
-                                    trelloSync.handleCardMove(card, sourceBoard, targetList),
+                                    () => trelloSync.handleCardMove(card, sourceBoard, targetList),
                                     15000,
                                     `Timeout in handleCardMove for card ${card.id}`
                                 );
