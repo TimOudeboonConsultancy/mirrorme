@@ -78,8 +78,8 @@ export class TrelloSync {
                     const fullCard = await trelloApi.request(`/cards/${card.id}`);
                     console.log('Full Card Details:', JSON.stringify(fullCard, null, 2));
 
-                    // Create the origin label name
-                    const originLabelName = `Origin:${sourceBoard.name}`;
+                    // Create the origin label name using the configured label
+                    const originLabelName = `Origin:${sourceBoard.label || sourceBoard.name}`;
                     let originLabelId = null;
 
                     try {
@@ -114,7 +114,7 @@ export class TrelloSync {
                     }
 
                     // Combine original card's labels with the new origin label
-                    const labelIds = fullCard.labels.map(label => label.id);
+                    const labelIds = fullCard.labels ? fullCard.labels.map(label => label.id) : [];
                     if (originLabelId) {
                         labelIds.push(originLabelId);
                     }
@@ -139,9 +139,14 @@ export class TrelloSync {
                         const fullCard = await trelloApi.request(`/cards/${card.id}`);
                         const aggregateListId = this.listMapping.get(`aggregate-${targetList.name}`);
 
+                        if (!aggregateListId) {
+                            console.error(`No aggregate list found for: aggregate-${targetList.name}`);
+                            return;
+                        }
+
                         await trelloApi.updateCard(mirroredCardId, {
                             idList: aggregateListId,
-                            idLabels: fullCard.labels.map(label => label.id)
+                            idLabels: fullCard.labels ? fullCard.labels.map(label => label.id) : []
                         });
                         console.log(`Updated mirrored card ${mirroredCardId}`);
                     } catch (updateError) {
