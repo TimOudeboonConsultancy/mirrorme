@@ -159,25 +159,34 @@ class TrelloSync {
           const labels = await trelloApi.request(`/boards/${config.aggregateBoard}/labels`);
           let existingLabel = labels.find(l => l.name === originLabelName);
 
-          if (!existingLabel) {
-            // Determine the color for the new label based on the board name
-            const labelColor = this.boardColorMap[sourceBoard.name] || 'blue_dark';
+          // Determine the color for the new label based on the board name
+          const labelColor = this.boardColorMap[sourceBoard.name] || 'blue_dark';
 
+          if (!existingLabel) {
             // Create a new label if it doesn't exist
             const newLabel = await trelloApi.request(`/boards/${config.aggregateBoard}/labels`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 name: originLabelName,
-                color: labelColor
+                color: labelColor // Use the board-specific color
               })
             });
 
             originLabelId = newLabel.id;
             console.log(`Created new label: ${originLabelName} with color ${labelColor}, ID: ${originLabelId}`);
           } else {
+            // If label exists, update its color to match the board color
+            const updateResult = await trelloApi.request(`/labels/${existingLabel.id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                color: labelColor
+              })
+            });
+
             originLabelId = existingLabel.id;
-            console.log(`Found existing label: ${originLabelName}, ID: ${originLabelId}`);
+            console.log(`Updated existing label: ${originLabelName} to color ${labelColor}`);
           }
         } catch (labelError) {
           console.error('Error handling label:', labelError);
