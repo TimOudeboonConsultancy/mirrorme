@@ -112,7 +112,15 @@ export function createWebhookRoutes(app, trelloSync) {
 
                     const card = action.data.card;
                     const board = action.data.board;
-                    const targetList = action.data.listAfter || action.data.list;
+                    // For label events, we need to fetch the list
+                    let targetList;
+                    if (action.type === 'addLabelToCard') {
+                        const fullCard = await trelloApi.request(`/cards/${card.id}`);
+                        const fullList = await trelloApi.request(`/lists/${fullCard.idList}`);
+                        targetList = fullList;
+                    } else {
+                        targetList = action.data.listAfter || action.data.list;
+                    }
 
                     if (!targetList) {
                         console.log('No target list found in webhook data');
