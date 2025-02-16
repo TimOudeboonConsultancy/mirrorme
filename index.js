@@ -1,6 +1,6 @@
 import express from 'express';
 import { TrelloSync } from './trello-sync.js';
-import { createWebhookRoutes } from './webhook-handler.js';
+import { createWebhookRoutes, validateTrelloWebhook } from './webhook-handler.js';
 
 // Initialize express app and sync instance
 const app = express();
