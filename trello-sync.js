@@ -12,6 +12,7 @@ export class TrelloSync {
         console.log('Initializing TrelloSync...');
         console.log('Configured Source Boards:', JSON.stringify(config.sourceBoards, null, 2));
         console.log('Configured List Names:', JSON.stringify(config.listNames, null, 2));
+        console.log('List Priorities:', JSON.stringify(config.listPriorities, null, 2));
 
         // Map lists for source boards
         for (const board of config.sourceBoards) {
@@ -55,6 +56,7 @@ export class TrelloSync {
         try {
             fullCard = await trelloApi.request(`/cards/${card.id}`);
             console.log('Full card details:', JSON.stringify(fullCard, null, 2));
+            console.log('Card Due Date:', fullCard.due);
         } catch (error) {
             console.error('Error fetching full card details:', error);
             return;
@@ -70,17 +72,21 @@ export class TrelloSync {
         const dueDate = new Date(fullCard.due);
         const daysDifference = Math.ceil((dueDate - today) / (1000 * 60 * 60 * 24));
 
-        console.log('Date Calculation:');
-        console.log(`Today: ${today}`);
-        console.log(`Due Date: ${dueDate}`);
-        console.log(`Days until due: ${daysDifference}`);
+        console.log('Date Calculation:', {
+            today: today.toISOString(),
+            dueDate: dueDate.toISOString(),
+            daysDifference
+        });
 
         // Find the appropriate target list based on due date
-        const targetListPriority = config.listPriorities.find(priority =>
-            priority.maxDays >= 0 &&
-            (daysDifference <= priority.maxDays ||
-                (priority.name === 'Vandaag' && dueDate <= today))
-        );
+        const targetListPriority = config.listPriorities.find(priority => {
+            console.log('Checking list priority:', priority);
+            return (
+                priority.maxDays >= 0 &&
+                (daysDifference <= priority.maxDays ||
+                    (priority.name === 'Vandaag' && dueDate <= today))
+            );
+        });
 
         console.log('Target List Priority:', JSON.stringify(targetListPriority, null, 2));
 
@@ -91,10 +97,11 @@ export class TrelloSync {
 
         const targetListId = this.listMapping.get(`${boardId}-${targetListPriority.name}`);
 
-        console.log('List Mapping Details:');
-        console.log(`Lookup Key: ${boardId}-${targetListPriority.name}`);
-        console.log(`Target List ID: ${targetListId}`);
-        console.log('Full list mapping:', JSON.stringify(Object.fromEntries(this.listMapping), null, 2));
+        console.log('List Mapping Details:', {
+            lookupKey: `${boardId}-${targetListPriority.name}`,
+            targetListId,
+            fullListMapping: Object.fromEntries(this.listMapping)
+        });
 
         if (!targetListId) {
             console.error(`Target list not found: ${targetListPriority.name} for board ${boardId}`);
@@ -119,6 +126,8 @@ export class TrelloSync {
                 try {
                     // Fetch all cards for the board
                     const cards = await trelloApi.getCards(board.id);
+                    console.log(`Found ${cards.length} cards on board ${board.name}`);
+
                     // Check and move each card
                     for (const card of cards) {
                         await this.handleDueDateListMovement(card, board.id);
