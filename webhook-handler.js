@@ -3,215 +3,271 @@ import { config } from './config.js';
 import { setTimeout } from 'timers/promises';
 import { trelloApi } from './trello-api.js';
 
-// Timeout utility function
-async function withTimeout(asyncFunc, ms = 10000, errorMessage = 'Operation timed out') {
-    return Promise.race([
-        asyncFunc,
-        new Promise((_, reject) =>
-            setTimeout(ms).then(() => reject(new Error(errorMessage)))
-        )
-    ]);
+// Enhanced timeout utility with logging
+async function withTimeout(asyncFunc, ms = 10000, operationName = 'Unknown Operation') {
+    const startTime = Date.now();
+    console.log(`Starting ${operationName} with ${ms}ms timeout`);
+
+    const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(ms).then(() => {
+            const duration = Date.now() - startTime;
+            console.error(`${operationName} timed out after ${duration}ms`);
+            reject(new Error(`${operationName} timed out after ${duration}ms`));
+        })
+    );
+
+    try {
+        const result = await Promise.race([asyncFunc(), timeoutPromise]);
+        const duration = Date.now() - startTime;
+        console.log(`${operationName} completed successfully in ${duration}ms`);
+        return result;
+    } catch (error) {
+        const duration = Date.now() - startTime;
+        console.error(`${operationName} failed after ${duration}ms:`, error);
+        throw error;
+    }
 }
 
+// Enhanced webhook validation with detailed logging
 export function validateTrelloWebhook(req, res, next) {
-    // Allow HEAD requests without validation
+    const startTime = Date.now();
+    const requestId = crypto.randomBytes(16).toString('hex');
+
+    console.log('\n=== START Webhook Validation ===');
+    console.log('Request Details:', {
+        id: requestId,
+        timestamp: new Date().toISOString(),
+        method: req.method,
+        path: req.path,
+        ip: req.ip
+    });
+
+    // Allow HEAD/OPTIONS requests without validation
     if (req.method === 'HEAD' || req.method === 'OPTIONS') {
+        console.log(`${requestId}: Allowing ${req.method} request without validation`);
         return next();
     }
 
-    // Only validate POST requests with HMAC
     if (req.method === 'POST') {
         const callbackURL = 'https://trello-sync-mirror-f28465526010.herokuapp.com/webhook/card-moved';
 
         try {
-            // Extensive logging for debugging
-            console.log('Webhook Validation Detailed Debug:');
-            console.log('Request Method:', req.method);
-            console.log('Raw Body Length:', req.rawBody ? req.rawBody.length : 'NO RAW BODY');
-            console.log('Callback URL:', callbackURL);
-            console.log('All Headers:', JSON.stringify(req.headers, null, 2));
-            console.log('X-Trello-Webhook Header:', req.headers['x-trello-webhook']);
-            console.log('API Secret Present:', !!process.env.TRELLO_API_SECRET);
+            console.log(`${requestId}: Validating POST request`);
+            console.log('Validation Context:', {
+                hasRawBody: !!req.rawBody,
+                rawBodyLength: req.rawBody?.length,
+                contentType: req.headers['content-type'],
+                hasWebhookSignature: !!req.headers['x-trello-webhook'],
+                hasApiSecret: !!process.env.TRELLO_API_SECRET
+            });
 
-            // First, verify the presence of the webhook signature
+            // Verify webhook signature
             const trelloSignature = req.headers['x-trello-webhook'];
             if (!trelloSignature) {
-                console.error('No Trello webhook signature found');
+                console.error(`${requestId}: Missing webhook signature`);
                 return res.status(401).send('Unauthorized: Missing webhook signature');
             }
 
-            // Verify the API secret is present
+            // Verify API secret
             if (!process.env.TRELLO_API_SECRET) {
-                console.error('Trello API Secret is not set');
+                console.error(`${requestId}: API secret not configured`);
                 return res.status(500).send('Internal Server Error: Missing API Secret');
             }
 
-            // Validate the body is not empty
+            // Validate body
             if (!req.rawBody) {
-                console.error('Raw body is empty');
+                console.error(`${requestId}: Empty request body`);
                 return res.status(400).send('Bad Request: Empty body');
             }
 
-            // Compute HMAC signature
+            // Compute signature
             const hmac = crypto.createHmac('sha1', process.env.TRELLO_API_SECRET);
             const computedSignature = hmac
                 .update(req.rawBody + callbackURL)
                 .digest('base64');
 
-            console.log('Received Signature:', trelloSignature);
-            console.log('Computed Signature:', computedSignature);
+            console.log('Signature Verification:', {
+                requestId,
+                received: trelloSignature,
+                computed: computedSignature,
+                matches: computedSignature === trelloSignature
+            });
 
-            // Validate the signature
             if (computedSignature === trelloSignature) {
+                const duration = Date.now() - startTime;
+                console.log(`${requestId}: Validation successful (${duration}ms)`);
                 return next();
             } else {
-                console.error('Webhook signature validation failed');
-                console.error('Signature Mismatch:');
-                console.error('Received:', trelloSignature);
-                console.error('Computed:', computedSignature);
+                console.error(`${requestId}: Signature mismatch`);
                 return res.status(401).send('Unauthorized: Invalid webhook signature');
             }
         } catch (error) {
-            console.error('Webhook validation error:', error);
+            console.error(`${requestId}: Validation error:`, {
+                error: error.message,
+                stack: error.stack,
+                duration: Date.now() - startTime
+            });
             return res.status(500).send('Internal Server Error');
         }
     }
 
-    // Allow GET requests for health checks
     if (req.method === 'GET') {
+        console.log(`${requestId}: Allowing GET request`);
         return next();
     }
 
-    // Deny other methods
+    console.log(`${requestId}: Rejecting unsupported method: ${req.method}`);
     res.status(405).send('Method Not Allowed');
 }
 
+// Enhanced webhook routes with detailed logging
 export function createWebhookRoutes(app, trelloSync) {
+    // Health check endpoint
     app.get('/', (req, res) => {
+        console.log('Health check request received');
         res.send('Trello Sync Service is running!');
     });
 
+    // Main webhook handler
     app.all('/webhook/card-moved', validateTrelloWebhook, async (req, res) => {
-        // Immediately respond to the webhook
+        const startTime = Date.now();
+        const webhookId = crypto.randomBytes(8).toString('hex');
+
+        // Immediate response to prevent timeout
         res.sendStatus(200);
 
-        try {
-            console.log('\n=== New Webhook Event ===');
-            console.log('Timestamp:', new Date().toISOString());
+        console.log('\n=== START Webhook Processing ===');
+        console.log('Webhook Details:', {
+            id: webhookId,
+            timestamp: new Date().toISOString(),
+            contentLength: req.get('content-length'),
+            userAgent: req.get('user-agent')
+        });
 
+        try {
             if (!req.body.action) {
-                console.log('No action in webhook payload');
+                console.log(`${webhookId}: No action in payload`);
                 return;
             }
 
             const { action } = req.body;
 
-            // Enhanced logging for all incoming webhook data
-            console.log('\n=== Webhook Action Details ===');
-            console.log('Action Type:', action.type);
-            console.log('Action ID:', action.id);
-            console.log('Board Info:', {
-                id: action.data.board?.id,
-                name: action.data.board?.name,
-                isSourceBoard: config.sourceBoards.some(b => b.id === action.data.board?.id),
-                isAggregateBoard: action.data.board?.id === config.aggregateBoard
-            });
-            console.log('Card Info:', {
-                id: action.data.card?.id,
-                name: action.data.card?.name,
-                shortLink: action.data.card?.shortLink
-            });
-            console.log('List Info:', {
-                current: action.data.list,
-                after: action.data.listAfter,
-                before: action.data.listBefore
+            // Log webhook context
+            console.log('Webhook Context:', {
+                id: webhookId,
+                actionType: action.type,
+                actionId: action.id,
+                board: {
+                    id: action.data.board?.id,
+                    name: action.data.board?.name,
+                    isSource: config.sourceBoards.some(b => b.id === action.data.board?.id),
+                    isAggregate: action.data.board?.id === config.aggregateBoard
+                },
+                card: {
+                    id: action.data.card?.id,
+                    name: action.data.card?.name,
+                    shortLink: action.data.card?.shortLink
+                },
+                lists: {
+                    current: action.data.list?.name,
+                    after: action.data.listAfter?.name,
+                    before: action.data.listBefore?.name
+                }
             });
 
-            // Log the current state of trelloSync
-            console.log('\n=== TrelloSync State ===');
-            console.log('List Mappings:', Array.from(trelloSync.listMapping.entries()));
-            console.log('Card Mappings:', Array.from(trelloSync.cardMapping.entries()));
+            // Log sync state
+            console.log('Current Sync State:', {
+                id: webhookId,
+                listMappingCount: trelloSync.listMapping.size,
+                cardMappingCount: trelloSync.cardMapping.size,
+                processingTime: Date.now() - startTime
+            });
 
-            // Handle both createCard and updateCard events
-            if ((action.type === 'createCard' ||
-                    action.type === 'updateCard' ||
-                    action.type === 'addLabelToCard' ||
-                    action.type === 'deleteCard') &&
-                action.data && action.data.board) {
-
-                console.log('\n=== Processing Card Action ===');
-                console.log('Action Type:', action.type);
-                console.log('Card Data:', action.data.card);
-                console.log('Board Data:', action.data.board);
-                console.log('List Data:', action.data.list || action.data.listAfter);
+            // Handle card actions
+            if (['createCard', 'updateCard', 'addLabelToCard', 'deleteCard'].includes(action.type)) {
+                console.log(`${webhookId}: Processing ${action.type} action`);
 
                 const card = action.data.card;
                 const board = action.data.board;
                 let targetList;
 
-                // Enhanced list determination logic
+                // Enhanced list determination
                 if (action.type === 'addLabelToCard') {
-                    console.log('Fetching full card details for label action...');
-                    const fullCard = await trelloApi.request(`/cards/${card.id}`);
-                    console.log('Full card details:', fullCard);
-                    const fullList = await trelloApi.request(`/lists/${fullCard.idList}`);
-                    console.log('Full list details:', fullList);
-                    targetList = fullList;
+                    console.log(`${webhookId}: Fetching card details for label action`);
+                    try {
+                        const fullCard = await trelloApi.request(`/cards/${card.id}`);
+                        const fullList = await trelloApi.request(`/lists/${fullCard.idList}`);
+                        targetList = fullList;
+
+                        console.log('Card and List Details:', {
+                            webhookId,
+                            cardId: fullCard.id,
+                            listId: fullList.id,
+                            listName: fullList.name,
+                            processingTime: Date.now() - startTime
+                        });
+                    } catch (error) {
+                        console.error(`${webhookId}: Failed to fetch card details:`, error);
+                        throw error;
+                    }
                 } else {
                     targetList = action.data.listAfter || action.data.list;
                 }
 
                 if (!targetList) {
-                    console.log('No target list found in webhook data');
+                    console.error(`${webhookId}: No target list found`);
                     return;
                 }
 
-                console.log('Final target list determination:', {
-                    id: targetList.id,
-                    name: targetList.name,
-                    isConfiguredList: config.listNames.includes(targetList.name)
-                });
-
-                // Handle card operations with enhanced logging
+                // Process based on board type
                 if (board.id === config.aggregateBoard) {
-                    console.log('\n=== Processing Aggregate Board Action ===');
+                    console.log(`${webhookId}: Processing aggregate board action`);
                     await withTimeout(
                         () => trelloSync.handleAggregateCardMove(card, targetList),
                         15000,
-                        `Timeout in handleAggregateCardMove for card ${card.id}`
+                        `Aggregate card move (${webhookId})`
                     );
                 } else {
                     const sourceBoard = config.sourceBoards.find(b => b.id === board.id);
                     if (sourceBoard) {
-                        console.log('\n=== Processing Source Board Action ===');
-                        console.log('Source Board:', sourceBoard);
+                        console.log(`${webhookId}: Processing source board action`);
 
                         if (config.listNames.includes(targetList.name)) {
-                            console.log('List is configured, handling card move...');
                             await withTimeout(
                                 () => trelloSync.handleCardMove(card, sourceBoard, targetList),
                                 15000,
-                                `Timeout in handleCardMove for card ${card.id}`
+                                `Source card move (${webhookId})`
                             );
                         } else {
-                            console.log(`List "${targetList.name}" not in configured lists:`, config.listNames);
+                            console.log(`${webhookId}: List "${targetList.name}" not configured`);
                         }
                     } else {
-                        console.log(`Board ${board.id} not found in source boards:`,
-                            config.sourceBoards.map(b => ({ id: b.id, name: b.name })));
+                        console.log(`${webhookId}: Board ${board.id} not in source boards`);
                     }
                 }
             } else {
-                console.log('Action type not handled:', action.type);
+                console.log(`${webhookId}: Ignoring unhandled action type: ${action.type}`);
             }
+
+            // Log completion
+            const duration = Date.now() - startTime;
+            console.log('Webhook Processing Complete:', {
+                id: webhookId,
+                duration,
+                actionType: action.type,
+                status: 'success'
+            });
+
         } catch (error) {
-            console.error('\n=== Webhook Processing Error ===');
-            console.error('Error:', error);
-            if (error.message.includes('Timeout')) {
-                console.error('Operation timed out:', error.message);
-            }
-            // Log the full error stack for debugging
-            console.error('Stack:', error.stack);
+            const duration = Date.now() - startTime;
+            console.error('Webhook Processing Failed:', {
+                id: webhookId,
+                duration,
+                error: error.message,
+                stack: error.stack,
+                type: error.name,
+                isTimeout: error.message.includes('timed out')
+            });
         }
     });
 }

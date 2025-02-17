@@ -50,63 +50,92 @@ export class TrelloSync {
     }
 
     async handleCardMove(card, sourceBoard, targetList) {
+        const startTime = Date.now();
+        console.log('\n=== ENTRY handleCardMove ===');
+        console.log('Execution started at:', new Date().toISOString());
+        console.log('Arguments received:', {
+            card: JSON.stringify(card),
+            sourceBoard: JSON.stringify(sourceBoard),
+            targetList: JSON.stringify(targetList)
+        });
+
         try {
-            console.log('=== Detailed Card Move Debugging ===');
-            console.log('Card Details:', JSON.stringify(card, null, 2));
-            console.log('Source Board:', JSON.stringify(sourceBoard, null, 2));
-            console.log('Target List:', JSON.stringify(targetList, null, 2));
-            console.log('Current List Mappings:', Array.from(this.listMapping.entries()));
+            console.log('\n=== Detailed Card Move Debugging ===');
+            console.log('Processing timing:', {
+                startTime,
+                elapsedMs: Date.now() - startTime
+            });
 
             const isConfiguredList = config.listNames.includes(targetList.name);
-            console.log(`Is target list configured? ${isConfiguredList}`);
+            console.log('Card creation decision factors:', {
+                targetListName: targetList.name,
+                isConfiguredList,
+                configuredLists: config.listNames
+            });
 
             const cardMappingKey = `${sourceBoard.id}-${card.id}`;
             let mirroredCardId = this.cardMapping.get(cardMappingKey);
 
-            console.log(`Existing Mirrored Card ID for ${cardMappingKey}: ${mirroredCardId}`);
+            console.log('Card mapping status:', {
+                cardMappingKey,
+                existingMirroredCardId: mirroredCardId,
+                mappingSize: this.cardMapping.size,
+                elapsedMs: Date.now() - startTime
+            });
 
             if (!mirroredCardId && isConfiguredList) {
-                console.log('=== START Creating Mirrored Card ===');
+                console.log('\n=== START Creating Mirrored Card ===');
                 const aggregateListId = this.listMapping.get(`aggregate-${targetList.name}`);
-                console.log(`Looking up aggregate list: aggregate-${targetList.name}`);
-                console.log(`Aggregate List ID: ${aggregateListId}`);
+                console.log('Aggregate list lookup:', {
+                    lookupKey: `aggregate-${targetList.name}`,
+                    aggregateListId,
+                    allMappings: Array.from(this.listMapping.entries()),
+                    elapsedMs: Date.now() - startTime
+                });
 
                 if (!aggregateListId) {
-                    console.error(`No aggregate list found for: aggregate-${targetList.name}`);
-                    console.log('Current list mappings:', Array.from(this.listMapping.entries()));
+                    console.error('No aggregate list found:', {
+                        lookupKey: `aggregate-${targetList.name}`,
+                        availableMappings: Array.from(this.listMapping.entries())
+                    });
                     return;
                 }
 
                 try {
-                    // Fetch full card details
-                    console.log('=== START Fetching Card Details ===');
+                    console.log('\n=== START Fetching Card Details ===');
+                    console.log('Fetching full card details for:', card.id);
                     const fullCard = await trelloApi.request(`/cards/${card.id}`);
-                    console.log('Full Card Details:', JSON.stringify(fullCard, null, 2));
+                    console.log('Full card details retrieved:', {
+                        cardId: fullCard.id,
+                        name: fullCard.name,
+                        labels: fullCard.labels,
+                        elapsedMs: Date.now() - startTime
+                    });
 
-                    // Create the origin label name using the configured label
-                    console.log('=== START Label Processing ===');
+                    console.log('\n=== START Label Processing ===');
                     const originLabelName = `Origin:${sourceBoard.label || sourceBoard.name}`;
                     let originLabelId = null;
 
                     try {
-                        // Fetch labels for the aggregate board
                         console.log('Fetching aggregate board labels...');
                         const labels = await trelloApi.request(`/boards/${config.aggregateBoard}/labels`);
-                        console.log('Existing Labels:', JSON.stringify(labels, null, 2));
+                        console.log('Label fetch complete:', {
+                            totalLabels: labels.length,
+                            elapsedMs: Date.now() - startTime
+                        });
 
                         let existingLabel = labels.find(l => l.name === originLabelName);
-
-                        // Determine the color for the new label
                         const labelColor = this.boardColorMap[sourceBoard.name] || 'blue';
-                        console.log('Label parameters:', {
+
+                        console.log('Label determination:', {
                             originLabelName,
                             labelColor,
-                            existingLabel: existingLabel ? existingLabel.id : 'none found'
+                            existingLabelFound: !!existingLabel,
+                            elapsedMs: Date.now() - startTime
                         });
 
                         if (!existingLabel) {
-                            // Create a new label if it doesn't exist
-                            console.log(`Creating new label: ${originLabelName} with color ${labelColor}`);
+                            console.log(`Creating new label: ${originLabelName}`);
                             const newLabel = await trelloApi.request(`/boards/${config.aggregateBoard}/labels`, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
@@ -115,81 +144,103 @@ export class TrelloSync {
                                     color: labelColor
                                 })
                             });
-
                             originLabelId = newLabel.id;
-                            console.log(`Created new label: ${originLabelName} with color ${labelColor}, ID: ${originLabelId}`);
+                            console.log('New label created:', {
+                                labelId: originLabelId,
+                                name: originLabelName,
+                                elapsedMs: Date.now() - startTime
+                            });
                         } else {
                             originLabelId = existingLabel.id;
-                            console.log(`Using existing label: ${originLabelName}, ID: ${originLabelId}`);
+                            console.log('Using existing label:', {
+                                labelId: originLabelId,
+                                name: originLabelName,
+                                elapsedMs: Date.now() - startTime
+                            });
                         }
                     } catch (labelError) {
-                        console.error('Error handling label:', labelError);
-                        console.error('Label error details:', {
-                            message: labelError.message,
+                        console.error('Label processing error:', {
+                            error: labelError.message,
                             stack: labelError.stack,
-                            response: labelError.response
+                            response: labelError.response,
+                            elapsedMs: Date.now() - startTime
                         });
+                        throw labelError;
                     }
 
-                    // Combine original card's labels with the new origin label
                     const labelIds = fullCard.labels ? fullCard.labels.map(label => label.id) : [];
                     if (originLabelId) {
                         labelIds.push(originLabelId);
                     }
 
-                    console.log('=== START Card Creation API Call ===');
-                    console.log('Creating card with:', {
-                        listId: aggregateListId,
+                    console.log('\n=== START Card Creation ===');
+                    const cardCreationData = {
                         name: card.name,
                         desc: `Original board: ${sourceBoard.name}\n\n${card.desc || ''}`,
                         due: card.due,
-                        labelIds: labelIds,
-                        aggregateBoard: config.aggregateBoard
+                        idLabels: labelIds
+                    };
+
+                    console.log('Attempting card creation:', {
+                        listId: aggregateListId,
+                        cardData: cardCreationData,
+                        elapsedMs: Date.now() - startTime
                     });
 
                     try {
-                        console.log('Making create card API request...');
-                        const mirroredCard = await trelloApi.createCard(aggregateListId, {
-                            name: card.name,
-                            desc: `Original board: ${sourceBoard.name}\n\n${card.desc || ''}`,
-                            due: card.due,
-                            idLabels: labelIds
-                        });
+                        const timeUntilTimeout = 15000 - (Date.now() - startTime);
+                        console.log(`Time remaining before timeout: ${timeUntilTimeout}ms`);
 
-                        console.log('=== Card Creation Response ===');
-                        console.log('Created Card:', JSON.stringify(mirroredCard, null, 2));
+                        if (timeUntilTimeout < 2000) {
+                            console.warn('Warning: Approaching timeout limit');
+                        }
+
+                        const mirroredCard = await trelloApi.createCard(aggregateListId, cardCreationData);
+                        console.log('Card creation successful:', {
+                            newCardId: mirroredCard.id,
+                            name: mirroredCard.name,
+                            elapsedMs: Date.now() - startTime
+                        });
 
                         mirroredCardId = mirroredCard.id;
                         this.cardMapping.set(cardMappingKey, mirroredCardId);
-                        console.log('=== Card Creation Complete ===');
-                        console.log(`Card Mapping updated: ${cardMappingKey} -> ${mirroredCardId}`);
+                        console.log('Card mapping updated:', {
+                            key: cardMappingKey,
+                            value: mirroredCardId,
+                            totalMappings: this.cardMapping.size,
+                            elapsedMs: Date.now() - startTime
+                        });
                     } catch (createError) {
-                        console.error('=== Card Creation Error ===');
-                        console.error('Error details from card creation:', {
+                        console.error('Card creation failed:', {
                             error: createError.message,
                             stack: createError.stack,
-                            response: createError.response
+                            response: createError.response,
+                            elapsedMs: Date.now() - startTime
                         });
                         throw createError;
                     }
                 } catch (mainError) {
-                    console.error('Error creating mirrored card:', mainError);
-                    console.error('Full error details:', {
-                        message: mainError.message,
+                    console.error('Error in main card creation flow:', {
+                        error: mainError.message,
                         stack: mainError.stack,
-                        response: mainError.response
+                        response: mainError.response,
+                        elapsedMs: Date.now() - startTime
                     });
+                    throw mainError;
                 }
             } else if (mirroredCardId) {
+                console.log('\n=== START Card Update ===');
                 if (isConfiguredList) {
                     try {
-                        // Fetch full card details
+                        console.log('Updating existing mirrored card...');
                         const fullCard = await trelloApi.request(`/cards/${card.id}`);
                         const aggregateListId = this.listMapping.get(`aggregate-${targetList.name}`);
 
                         if (!aggregateListId) {
-                            console.error(`No aggregate list found for: aggregate-${targetList.name}`);
-                            console.log('Current list mappings:', Array.from(this.listMapping.entries()));
+                            console.error('No aggregate list found for update:', {
+                                lookupKey: `aggregate-${targetList.name}`,
+                                availableMappings: Array.from(this.listMapping.entries())
+                            });
                             return;
                         }
 
@@ -197,37 +248,58 @@ export class TrelloSync {
                             idList: aggregateListId,
                             idLabels: fullCard.labels ? fullCard.labels.map(label => label.id) : []
                         });
-                        console.log(`Updated mirrored card ${mirroredCardId}`);
-                    } catch (updateError) {
-                        console.error('Error updating mirrored card:', updateError);
-                        console.error('Update error details:', {
-                            message: updateError.message,
-                            stack: updateError.stack,
-                            response: updateError.response
+                        console.log('Card update complete:', {
+                            cardId: mirroredCardId,
+                            newListId: aggregateListId,
+                            elapsedMs: Date.now() - startTime
                         });
+                    } catch (updateError) {
+                        console.error('Card update failed:', {
+                            error: updateError.message,
+                            stack: updateError.stack,
+                            response: updateError.response,
+                            elapsedMs: Date.now() - startTime
+                        });
+                        throw updateError;
                     }
                 } else {
                     try {
+                        console.log('Deleting mirrored card (moved to unconfigured list)');
                         await trelloApi.deleteCard(mirroredCardId);
                         this.cardMapping.delete(cardMappingKey);
-                        console.log(`Deleted mirrored card ${mirroredCardId}`);
-                    } catch (deleteError) {
-                        console.error('Error deleting mirrored card:', deleteError);
-                        console.error('Delete error details:', {
-                            message: deleteError.message,
-                            stack: deleteError.stack,
-                            response: deleteError.response
+                        console.log('Card deletion complete:', {
+                            deletedCardId: mirroredCardId,
+                            removedMapping: cardMappingKey,
+                            elapsedMs: Date.now() - startTime
                         });
+                    } catch (deleteError) {
+                        console.error('Card deletion failed:', {
+                            error: deleteError.message,
+                            stack: deleteError.stack,
+                            response: deleteError.response,
+                            elapsedMs: Date.now() - startTime
+                        });
+                        throw deleteError;
                     }
                 }
             }
-        } catch (mainError) {
-            console.error('Unexpected error in handleCardMove:', mainError);
-            console.error('Full error details:', {
-                message: mainError.message,
-                stack: mainError.stack,
-                response: mainError.response
+
+            console.log('\n=== handleCardMove Completion ===');
+            console.log('Operation completed successfully:', {
+                totalDurationMs: Date.now() - startTime,
+                cardId: card.id,
+                targetList: targetList.name
             });
+        } catch (error) {
+            console.error('\n=== handleCardMove Error ===');
+            console.error('Fatal error in handleCardMove:', {
+                error: error.message,
+                stack: error.stack,
+                cardId: card.id,
+                targetList: targetList.name,
+                totalDurationMs: Date.now() - startTime
+            });
+            throw error;
         }
     }
 
