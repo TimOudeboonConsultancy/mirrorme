@@ -198,20 +198,41 @@ export class TrelloSync {
             // Add random delay to help with rate limiting
             await new Promise(resolve => setTimeout(resolve, Math.floor(Math.random() * 500)));
 
-            // Process card in Inbox for due date movement
-            if (targetList.name === 'Inbox') {
-                const fullCard = await this.fetchWithRetry(() => trelloApi.request(`/cards/${card.id}`));
-
-                // Check if card has a due date
-                if (fullCard.due) {
-                    await this.handleDueDateListMovement(card, sourceBoard.id);
-                }
-            }
-
             const isConfiguredList = config.listNames.includes(targetList.name);
             const cardMappingKey = `${sourceBoard.id}-${card.id}`;
             let mirroredCardId = this.cardMapping.get(cardMappingKey);
 
+            // Fetch full card details to check due date
+            const fullCard = await this.fetchWithRetry(() => trelloApi.request(`/cards/${card.id}`));
+
+            // Only handle due date movement for specific lists
+            if (targetList.name === 'Inbox' && fullCard.due) {
+                // Find the appropriate target list based on due date
+                const targetListPriority = config.listPriorities.find(priority => {
+                    const today = new Date();
+                    const dueDate = new Date(fullCard.due);
+                    const daysDifference = Math.ceil((dueDate - today) / (1000 * 60 * 60 * 24));
+
+                    return (
+                        priority.maxDays >= 0 &&
+                        (daysDifference <= priority.maxDays ||
+                            (priority.name === 'Vandaag' && dueDate <= today))
+                    );
+                });
+
+                // If a target list is found, move the card
+                if (targetListPriority) {
+                    const targetListId = this.listMapping.get(`${sourceBoard.id}-${targetListPriority.name}`);
+
+                    if (targetListId) {
+                        console.log(`Auto-moving card to ${targetListPriority.name} due to due date`);
+                        await trelloApi.updateCard(card.id, { idList: targetListId });
+                        return; // Exit to prevent further processing
+                    }
+                }
+            }
+
+            // Rest of the existing card move logic
             if (!mirroredCardId && isConfiguredList) {
                 // Create new mirrored card
                 mirroredCardId = await this.createMirroredCard(card, sourceBoard, targetList);
