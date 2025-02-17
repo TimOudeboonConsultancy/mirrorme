@@ -95,6 +95,11 @@ export class TrelloSync {
 
                         // Determine the color for the new label
                         const labelColor = this.boardColorMap[sourceBoard.name] || 'blue';
+                        console.log('Label parameters:', {
+                            originLabelName,
+                            labelColor,
+                            existingLabel: existingLabel ? existingLabel.id : 'none found'
+                        });
 
                         if (!existingLabel) {
                             // Create a new label if it doesn't exist
@@ -129,11 +134,13 @@ export class TrelloSync {
                         labelIds.push(originLabelId);
                     }
 
-                    console.log('Attempting to create mirrored card with:', {
+                    console.log('About to create mirrored card with:', {
                         listId: aggregateListId,
                         name: card.name,
                         desc: `Original board: ${sourceBoard.name}\n\n${card.desc || ''}`,
-                        labelIds
+                        due: card.due,
+                        labelIds: labelIds,
+                        aggregateBoard: config.aggregateBoard
                     });
 
                     try {
@@ -157,8 +164,13 @@ export class TrelloSync {
                         });
                         throw createError;
                     }
-                } catch (createError) {
-                    console.error('Error creating mirrored card:', createError);
+                } catch (mainError) {
+                    console.error('Error creating mirrored card:', mainError);
+                    console.error('Full error details:', {
+                        message: mainError.message,
+                        stack: mainError.stack,
+                        response: mainError.response
+                    });
                 }
             } else if (mirroredCardId) {
                 if (isConfiguredList) {
@@ -180,6 +192,11 @@ export class TrelloSync {
                         console.log(`Updated mirrored card ${mirroredCardId}`);
                     } catch (updateError) {
                         console.error('Error updating mirrored card:', updateError);
+                        console.error('Update error details:', {
+                            message: updateError.message,
+                            stack: updateError.stack,
+                            response: updateError.response
+                        });
                     }
                 } else {
                     try {
@@ -188,6 +205,11 @@ export class TrelloSync {
                         console.log(`Deleted mirrored card ${mirroredCardId}`);
                     } catch (deleteError) {
                         console.error('Error deleting mirrored card:', deleteError);
+                        console.error('Delete error details:', {
+                            message: deleteError.message,
+                            stack: deleteError.stack,
+                            response: deleteError.response
+                        });
                     }
                 }
             }
@@ -214,6 +236,11 @@ export class TrelloSync {
                     card = await trelloApi.request(`/cards/${card.id}`);
                 } catch (fetchError) {
                     console.error('Error fetching card details:', fetchError);
+                    console.error('Fetch error details:', {
+                        message: fetchError.message,
+                        stack: fetchError.stack,
+                        response: fetchError.response
+                    });
                     return;
                 }
             }
@@ -272,6 +299,11 @@ export class TrelloSync {
                 console.log(`Successfully updated original card ${originalCardId} to list ${sourceListId}`);
             } catch (updateError) {
                 console.error('Error updating original card:', updateError);
+                console.error('Update error details:', {
+                    message: updateError.message,
+                    stack: updateError.stack,
+                    response: updateError.response
+                });
                 throw updateError;
             }
         } catch (mainError) {
