@@ -51,11 +51,12 @@ export const trelloApi = {
 
     async createCard(listId, cardData) {
         console.log('Creating card with data:', JSON.stringify(cardData, null, 2));
+        console.log('List ID:', listId);
         return this.request(`/cards`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                idList: listId,
+                idList: listId,  // Make sure this is being set
                 name: cardData.name,
                 desc: cardData.desc,
                 due: cardData.due,

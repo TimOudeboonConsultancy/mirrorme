@@ -67,6 +67,7 @@ export class TrelloSync {
 
             if (!mirroredCardId && isConfiguredList) {
                 const aggregateListId = this.listMapping.get(`aggregate-${targetList.name}`);
+                console.log(`Looking up aggregate list: aggregate-${targetList.name}`);
                 console.log(`Aggregate List ID for ${targetList.name}: ${aggregateListId}`);
 
                 if (!aggregateListId) {
@@ -144,6 +145,7 @@ export class TrelloSync {
                     });
 
                     try {
+                        console.log('Making create card API request...');
                         const mirroredCard = await trelloApi.createCard(aggregateListId, {
                             name: card.name,
                             desc: `Original board: ${sourceBoard.name}\n\n${card.desc || ''}`,
