@@ -71,11 +71,13 @@ export class TrelloSync {
 
                 if (!aggregateListId) {
                     console.error(`No aggregate list found for: aggregate-${targetList.name}`);
+                    console.log('Current list mappings:', Array.from(this.listMapping.entries()));
                     return;
                 }
 
                 try {
                     // Fetch full card details
+                    console.log('Fetching full card details...');
                     const fullCard = await trelloApi.request(`/cards/${card.id}`);
                     console.log('Full Card Details:', JSON.stringify(fullCard, null, 2));
 
@@ -85,6 +87,7 @@ export class TrelloSync {
 
                     try {
                         // Fetch labels for the aggregate board
+                        console.log('Fetching aggregate board labels...');
                         const labels = await trelloApi.request(`/boards/${config.aggregateBoard}/labels`);
                         console.log('Existing Labels:', JSON.stringify(labels, null, 2));
 
@@ -95,6 +98,7 @@ export class TrelloSync {
 
                         if (!existingLabel) {
                             // Create a new label if it doesn't exist
+                            console.log(`Creating new label: ${originLabelName} with color ${labelColor}`);
                             const newLabel = await trelloApi.request(`/boards/${config.aggregateBoard}/labels`, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
@@ -112,6 +116,11 @@ export class TrelloSync {
                         }
                     } catch (labelError) {
                         console.error('Error handling label:', labelError);
+                        console.error('Label error details:', {
+                            message: labelError.message,
+                            stack: labelError.stack,
+                            response: labelError.response
+                        });
                     }
 
                     // Combine original card's labels with the new origin label
@@ -120,16 +129,34 @@ export class TrelloSync {
                         labelIds.push(originLabelId);
                     }
 
-                    const mirroredCard = await trelloApi.createCard(aggregateListId, {
+                    console.log('Attempting to create mirrored card with:', {
+                        listId: aggregateListId,
                         name: card.name,
                         desc: `Original board: ${sourceBoard.name}\n\n${card.desc || ''}`,
-                        due: card.due,
-                        idLabels: labelIds
+                        labelIds
                     });
 
-                    mirroredCardId = mirroredCard.id;
-                    this.cardMapping.set(cardMappingKey, mirroredCardId);
-                    console.log(`Created mirrored card ${mirroredCardId} with labels: ${labelIds.join(', ')}`);
+                    try {
+                        const mirroredCard = await trelloApi.createCard(aggregateListId, {
+                            name: card.name,
+                            desc: `Original board: ${sourceBoard.name}\n\n${card.desc || ''}`,
+                            due: card.due,
+                            idLabels: labelIds
+                        });
+
+                        console.log('Successfully created mirrored card:', mirroredCard);
+
+                        mirroredCardId = mirroredCard.id;
+                        this.cardMapping.set(cardMappingKey, mirroredCardId);
+                        console.log(`Created mirrored card ${mirroredCardId} with labels: ${labelIds.join(', ')}`);
+                    } catch (createError) {
+                        console.error('Error details from card creation:', {
+                            error: createError.message,
+                            stack: createError.stack,
+                            response: createError.response
+                        });
+                        throw createError;
+                    }
                 } catch (createError) {
                     console.error('Error creating mirrored card:', createError);
                 }
@@ -142,6 +169,7 @@ export class TrelloSync {
 
                         if (!aggregateListId) {
                             console.error(`No aggregate list found for: aggregate-${targetList.name}`);
+                            console.log('Current list mappings:', Array.from(this.listMapping.entries()));
                             return;
                         }
 
@@ -165,6 +193,11 @@ export class TrelloSync {
             }
         } catch (mainError) {
             console.error('Unexpected error in handleCardMove:', mainError);
+            console.error('Full error details:', {
+                message: mainError.message,
+                stack: mainError.stack,
+                response: mainError.response
+            });
         }
     }
 
@@ -243,6 +276,11 @@ export class TrelloSync {
             }
         } catch (mainError) {
             console.error('Unexpected error in handleAggregateCardMove:', mainError);
+            console.error('Full error details:', {
+                message: mainError.message,
+                stack: mainError.stack,
+                response: mainError.response
+            });
         }
     }
 }
