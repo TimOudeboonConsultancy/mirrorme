@@ -12,7 +12,7 @@ export const config = {
         { id: '67acabbf06e3955d1e3be739', name: 'tim-oudeboon-bv' }
     ],
     aggregateBoard: '67aca8e24e193b7fa5580831',
-    listNames: ['Komende 30 dagen', 'Komende 7 dagen', 'Vandaag', 'Done'],
+    listNames: ['Inbox', 'Komende 30 dagen', 'Komende 7 dagen', 'Vandaag', 'Done'],
     boardMapping: {
         'prive': 'green_light',
         'mba': 'blue_dark',
