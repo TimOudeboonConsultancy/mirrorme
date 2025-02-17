@@ -18,5 +18,11 @@ export const config = {
         'mba': 'blue_dark',
         'opdracht': 'red_light',
         'tim-oudeboon-bv': 'orange_dark'
-    }
+    },
+    timezone: 'Europe/Amsterdam',
+    listPriorities: [
+        { name: 'Vandaag', maxDays: 0 },
+        { name: 'Komende 7 dagen', maxDays: 7 },
+        { name: 'Komende 30 dagen', maxDays: 30 }
+    ]
 };

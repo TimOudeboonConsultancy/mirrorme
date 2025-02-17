@@ -1,6 +1,8 @@
 import express from 'express';
 import { TrelloSync } from './trello-sync.js';
 import { createWebhookRoutes, validateTrelloWebhook } from './webhook-handler.js';
+import schedule from 'node-schedule';
+import { config } from './config.js';
 
 // Initialize express app
 const app = express();
@@ -88,6 +90,20 @@ const trelloSync = new TrelloSync();
 // Create routes with the enhanced webhook handler
 createWebhookRoutes(app, trelloSync);
 
+// Set up daily scheduled job
+const dailyJob = schedule.scheduleJob({
+  hour: 0,
+  minute: 0,
+  tz: config.timezone
+}, async () => {
+  console.log('Daily scheduled job for card movement starting...');
+  try {
+    await trelloSync.performDailyCardMovement();
+  } catch (error) {
+    console.error('Error in daily scheduled job:', error);
+  }
+});
+
 // Start server with enhanced logging and error handling
 const port = process.env.PORT || 3000;
 app.listen(port, async () => {
@@ -101,11 +117,11 @@ app.listen(port, async () => {
     await trelloSync.initialize();
     console.log('TrelloSync initialization complete');
   } catch (error) {
-    console.error('TrelloSync initialization failed:', {
-      error: error.message,
-      stack: error.stack
-    });
-    // Continue running the server even if sync initialization fails
-    // This allows for manual recovery and webhook processing
-  }
-});
+      console.error('TrelloSync initialization failed:', {
+        error: error.message,
+        stack: error.stack
+      });
+      // Continue running the server even if sync initialization fails
+      // This allows for manual recovery and webhook processing
+    }
+  });
