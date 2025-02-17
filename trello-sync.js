@@ -66,9 +66,10 @@ export class TrelloSync {
             console.log(`Existing Mirrored Card ID for ${cardMappingKey}: ${mirroredCardId}`);
 
             if (!mirroredCardId && isConfiguredList) {
+                console.log('=== START Creating Mirrored Card ===');
                 const aggregateListId = this.listMapping.get(`aggregate-${targetList.name}`);
                 console.log(`Looking up aggregate list: aggregate-${targetList.name}`);
-                console.log(`Aggregate List ID for ${targetList.name}: ${aggregateListId}`);
+                console.log(`Aggregate List ID: ${aggregateListId}`);
 
                 if (!aggregateListId) {
                     console.error(`No aggregate list found for: aggregate-${targetList.name}`);
@@ -78,11 +79,12 @@ export class TrelloSync {
 
                 try {
                     // Fetch full card details
-                    console.log('Fetching full card details...');
+                    console.log('=== START Fetching Card Details ===');
                     const fullCard = await trelloApi.request(`/cards/${card.id}`);
                     console.log('Full Card Details:', JSON.stringify(fullCard, null, 2));
 
                     // Create the origin label name using the configured label
+                    console.log('=== START Label Processing ===');
                     const originLabelName = `Origin:${sourceBoard.label || sourceBoard.name}`;
                     let originLabelId = null;
 
@@ -135,7 +137,8 @@ export class TrelloSync {
                         labelIds.push(originLabelId);
                     }
 
-                    console.log('About to create mirrored card with:', {
+                    console.log('=== START Card Creation API Call ===');
+                    console.log('Creating card with:', {
                         listId: aggregateListId,
                         name: card.name,
                         desc: `Original board: ${sourceBoard.name}\n\n${card.desc || ''}`,
@@ -153,12 +156,15 @@ export class TrelloSync {
                             idLabels: labelIds
                         });
 
-                        console.log('Successfully created mirrored card:', mirroredCard);
+                        console.log('=== Card Creation Response ===');
+                        console.log('Created Card:', JSON.stringify(mirroredCard, null, 2));
 
                         mirroredCardId = mirroredCard.id;
                         this.cardMapping.set(cardMappingKey, mirroredCardId);
-                        console.log(`Created mirrored card ${mirroredCardId} with labels: ${labelIds.join(', ')}`);
+                        console.log('=== Card Creation Complete ===');
+                        console.log(`Card Mapping updated: ${cardMappingKey} -> ${mirroredCardId}`);
                     } catch (createError) {
+                        console.error('=== Card Creation Error ===');
                         console.error('Error details from card creation:', {
                             error: createError.message,
                             stack: createError.stack,
