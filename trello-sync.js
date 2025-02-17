@@ -20,11 +20,9 @@ export class TrelloSync {
             console.log(`Lists found for ${board.name}:`, lists.map(l => l.name));
 
             for (const list of lists) {
-                if (config.listNames.includes(list.name)) {
-                    const mappingKey = `${board.id}-${list.name}`;
-                    this.listMapping.set(mappingKey, list.id);
-                    console.log(`Mapped ${mappingKey} to list ID: ${list.id}`);
-                }
+                const mappingKey = `${board.id}-${list.name}`;
+                this.listMapping.set(mappingKey, list.id);
+                console.log(`Mapped ${mappingKey} to list ID: ${list.id}`);
             }
         }
 
@@ -34,11 +32,9 @@ export class TrelloSync {
         console.log('Aggregate board lists:', aggregateLists.map(l => l.name));
 
         for (const list of aggregateLists) {
-            if (config.listNames.includes(list.name)) {
-                const mappingKey = `aggregate-${list.name}`;
-                this.listMapping.set(mappingKey, list.id);
-                console.log(`Mapped ${mappingKey} to list ID: ${list.id}`);
-            }
+            const mappingKey = `aggregate-${list.name}`;
+            this.listMapping.set(mappingKey, list.id);
+            console.log(`Mapped ${mappingKey} to list ID: ${list.id}`);
         }
 
         console.log('Final List Mapping:');
@@ -147,11 +143,15 @@ export class TrelloSync {
             targetList: JSON.stringify(targetList)
         });
 
-        // Check and move card if it's in the Inbox and has a due date
+        // Process card in Inbox for due date movement
         if (targetList.name === 'Inbox') {
             try {
+                console.log('Processing card in Inbox');
                 const fullCard = await trelloApi.request(`/cards/${card.id}`);
+
+                // Check if card has a due date
                 if (fullCard.due) {
+                    console.log('Card has a due date, initiating list movement');
                     await this.handleDueDateListMovement(card, sourceBoard.id);
                 }
             } catch (error) {
@@ -270,8 +270,8 @@ export class TrelloSync {
                     console.log('\n=== START Card Creation ===');
                     const cardCreationData = {
                         name: card.name,
-                        desc: `Original board: ${sourceBoard.name}\n\n${card.desc || ''}`,
-                        due: card.due,
+                        desc: `Original board: ${sourceBoard.name}\n\n${fullCard.desc || ''}`,
+                        due: fullCard.due,
                         idLabels: labelIds
                     };
 
