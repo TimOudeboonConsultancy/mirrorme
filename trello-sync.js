@@ -8,6 +8,25 @@ export class TrelloSync {
         this.cardMapping = new Map();
         // Color mapping for origin labels based on board configuration
         this.boardColorMap = config.boardMapping;
+        // Add synchronization lock
+        this.syncLock = new Map();
+        // Track cards being processed
+        this.processingCards = new Set();
+    }
+
+    async acquireLock(cardId, timeout = 5000) {
+        const start = Date.now();
+        while (this.syncLock.has(cardId)) {
+            if (Date.now() - start > timeout) {
+                throw new Error('Lock acquisition timeout');
+            }
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        this.syncLock.set(cardId, Date.now());
+    }
+
+    releaseLock(cardId) {
+        this.syncLock.delete(cardId);
     }
 
     /**
@@ -85,6 +104,28 @@ export class TrelloSync {
     }
 
     /**
+     * Find existing mirrored cards on the aggregate board
+     * @param {Object} card - The original card
+     * @param {Object} sourceBoard - The source board
+     * @returns {Array} - Array of matching cards
+     */
+    async findExistingMirroredCards(card, sourceBoard) {
+        try {
+            const aggregateCards = await this.fetchWithRetry(() =>
+                trelloApi.getCards(config.aggregateBoard)
+            );
+
+            return aggregateCards.filter(c =>
+                c.name === card.name &&
+                c.desc.includes(`Original board: ${sourceBoard.name}`)
+            );
+        } catch (error) {
+            console.error('Error finding existing mirrored cards:', error);
+            return [];
+        }
+    }
+
+    /**
      * Handle automatic list movement based on card's due date
      * @param {Object} card - The card to potentially move
      * @param {string} boardId - The source board ID
@@ -94,20 +135,28 @@ export class TrelloSync {
         console.log(`Card details:`, JSON.stringify(card, null, 2));
         console.log(`Board ID: ${boardId}`);
 
+        if (this.processingCards.has(card.id)) {
+            console.log(`Card ${card.id} is already being processed, skipping movement`);
+            return;
+        }
+
         // Fetch full card details with retry mechanism
         let fullCard;
         try {
+            this.processingCards.add(card.id);
             fullCard = await this.fetchWithRetry(() => trelloApi.request(`/cards/${card.id}`));
             console.log('Full card details:', JSON.stringify(fullCard, null, 2));
             console.log('Card Due Date:', fullCard.due);
         } catch (error) {
             console.error('Error fetching full card details:', error);
+            this.processingCards.delete(card.id);
             return;
         }
 
         // If no due date is set, return early
         if (!fullCard.due) {
             console.log('No due date set, skipping list movement');
+            this.processingCards.delete(card.id);
             return;
         }
 
@@ -132,6 +181,7 @@ export class TrelloSync {
 
         if (!targetListPriority) {
             console.log('No matching list priority found');
+            this.processingCards.delete(card.id);
             return;
         }
 
@@ -139,14 +189,19 @@ export class TrelloSync {
 
         if (!targetListId) {
             console.error(`Target list not found: ${targetListPriority.name} for board ${boardId}`);
+            this.processingCards.delete(card.id);
             return;
         }
 
         try {
+            await this.acquireLock(card.id);
             await trelloApi.updateCard(card.id, { idList: targetListId });
             console.log(`Successfully moved card ${card.name} to ${targetListPriority.name}`);
         } catch (error) {
             console.error(`Error moving card ${card.name}:`, error);
+        } finally {
+            this.releaseLock(card.id);
+            this.processingCards.delete(card.id);
         }
     }
 
@@ -185,16 +240,25 @@ export class TrelloSync {
      * @param {Object} targetList - The target list details
      */
     async handleCardMove(card, sourceBoard, targetList) {
-        const startTime = Date.now();
-        console.log('\n=== ENTRY handleCardMove ===');
-        console.log('Execution started at:', new Date().toISOString());
-        console.log('Arguments received:', {
-            card: JSON.stringify(card),
-            sourceBoard: JSON.stringify(sourceBoard),
-            targetList: JSON.stringify(targetList)
-        });
+        if (this.processingCards.has(card.id)) {
+            console.log(`Card ${card.id} is already being processed, skipping movement`);
+            return;
+        }
 
         try {
+            await this.acquireLock(card.id);
+            this.processingCards.add(card.id);
+            console.log(`Lock acquired for card: ${card.id}`);
+
+            const startTime = Date.now();
+            console.log('\n=== ENTRY handleCardMove ===');
+            console.log('Execution started at:', new Date().toISOString());
+            console.log('Arguments received:', {
+                card: JSON.stringify(card),
+                sourceBoard: JSON.stringify(sourceBoard),
+                targetList: JSON.stringify(targetList)
+            });
+
             // Add random delay to help with rate limiting
             await new Promise(resolve => setTimeout(resolve, Math.floor(Math.random() * 500)));
 
@@ -232,22 +296,29 @@ export class TrelloSync {
                 }
             }
 
-            // Rest of the existing card move logic
+            // Check for existing mirrored cards
+            if (!mirroredCardId && isConfiguredList) {
+                const existingCards = await this.findExistingMirroredCards(card, sourceBoard);
+                if (existingCards.length > 0) {
+                    mirroredCardId = existingCards[0].id;
+                    this.cardMapping.set(cardMappingKey, mirroredCardId);
+                    console.log(`Found existing mirrored card: ${mirroredCardId}`);
+                }
+            }
+
             if (!mirroredCardId && isConfiguredList) {
                 // Create new mirrored card
                 mirroredCardId = await this.createMirroredCard(card, sourceBoard, targetList);
                 this.cardMapping.set(cardMappingKey, mirroredCardId);
-            } else if (mirroredCardId) {
-                if (isConfiguredList) {
-                    // Update existing mirrored card
-                    await this.updateMirroredCard(mirroredCardId, card, sourceBoard, targetList);
-                } else {
-                    // Delete mirrored card if moved to unconfigured list
-                    await this.deleteMirroredCard(mirroredCardId, cardMappingKey);
-                }
+            } else if (mirroredCardId && isConfiguredList) {
+                // Update existing mirrored card
+                await this.updateMirroredCard(mirroredCardId, card, sourceBoard, targetList);
+            } else if (mirroredCardId && !isConfiguredList) {
+                // Delete mirrored card if moved to unconfigured list
+                await this.deleteMirroredCard(mirroredCardId, cardMappingKey);
             }
 
-            console.log('Card synchronization completed successfully');
+            console.log(`Card synchronization completed in ${Date.now() - startTime}ms`);
         } catch (error) {
             console.error('Card synchronization failed:', {
                 error: error.message,
@@ -256,17 +327,10 @@ export class TrelloSync {
                 targetList: targetList.name
             });
 
-            // Attempt to recreate mirrored card if it was deleted
-            if (error.status === 404) {
-                try {
-                    const mirroredCardId = await this.recreateMirroredCard(card, sourceBoard, targetList);
-                    this.cardMapping.set(`${sourceBoard.id}-${card.id}`, mirroredCardId);
-                } catch (recreationError) {
-                    console.error('Failed to recreate mirrored card:', recreationError);
-                }
-            }
-
             throw error;
+        } finally {
+            this.releaseLock(card.id);
+            this.processingCards.delete(card.id);
         }
     }
 
@@ -292,19 +356,15 @@ export class TrelloSync {
         // Fetch or create origin label with retry
         let originLabel;
         const labels = await this.fetchWithRetry(() =>
-            trelloApi.request(`/boards/${config.aggregateBoard}/labels`)
+            trelloApi.getLabels(config.aggregateBoard)
         );
         originLabel = labels.find(l => l.name === originLabelName);
 
         if (!originLabel) {
             originLabel = await this.fetchWithRetry(() =>
-                trelloApi.request(`/boards/${config.aggregateBoard}/labels`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        name: originLabelName,
-                        color: labelColor
-                    })
+                trelloApi.createLabel(config.aggregateBoard, {
+                    name: originLabelName,
+                    color: labelColor
                 })
             );
         }
@@ -320,10 +380,11 @@ export class TrelloSync {
                 name: card.name,
                 desc: `Original board: ${sourceBoard.name}\n\n${fullCard.desc || ''}`,
                 due: fullCard.due,
-                idLabels: labelIds
+                idLabels: labelIds.length === 1 ? labelIds : []
             })
         );
 
+        console.log(`Created new mirrored card: ${mirroredCard.id}`);
         return mirroredCard.id;
     }
 
@@ -345,29 +406,33 @@ export class TrelloSync {
         // Handle origin label
         const originLabelName = `Origin:${sourceBoard.name}`;
         const labels = await this.fetchWithRetry(() =>
-            trelloApi.request(`/boards/${config.aggregateBoard}/labels`)
+            trelloApi.getLabels(config.aggregateBoard)
         );
         const originLabel = labels.find(l => l.name === originLabelName);
 
-        // Prepare label IDs
-        const labelIds = fullCard.labels ?
-            fullCard.labels.map(label => label.id) :
-            [];
+        // Prepare label IDs - simplified to reduce errors
+        const labelIds = originLabel ? [originLabel.id] : [];
 
-        if (originLabel) {
-            labelIds.push(originLabel.id);
-        }
-
-        // Update mirrored card
+        // Update mirrored card with minimal changes
         await this.fetchWithRetry(() =>
             trelloApi.updateCard(mirroredCardId, {
                 idList: aggregateListId,
-                idLabels: labelIds,
-                due: fullCard.due,
                 name: card.name,
-                desc: `Original board: ${sourceBoard.name}\n\n${fullCard.desc || ''}`
+                desc: `Original board: ${sourceBoard.name}\n\n${fullCard.desc || ''}`,
+                due: fullCard.due
             })
         );
+
+        // Update labels in a separate call to reduce errors
+        if (labelIds.length > 0) {
+            await this.fetchWithRetry(() =>
+                trelloApi.updateCard(mirroredCardId, {
+                    idLabels: labelIds
+                })
+            );
+        }
+
+        console.log(`Updated mirrored card: ${mirroredCardId}`);
     }
 
     /**
@@ -378,29 +443,7 @@ export class TrelloSync {
     async deleteMirroredCard(mirroredCardId, cardMappingKey) {
         await this.fetchWithRetry(() => trelloApi.deleteCard(mirroredCardId));
         this.cardMapping.delete(cardMappingKey);
-    }
-
-    /**
-     * Recreate a mirrored card that may have been deleted
-     * @param {Object} card - The original card
-     * @param {Object} sourceBoard - The source board details
-     * @param {Object} targetList - The target list details
-     * @returns {string} - The ID of the recreated mirrored card
-     */
-    async recreateMirroredCard(card, sourceBoard, targetList) {
-        try {
-            const mirroredCardId = await this.createMirroredCard(card, sourceBoard, targetList);
-            return mirroredCardId;
-        } catch (error) {
-            console.error('Detailed error during mirrored card recreation:', {
-                error: error.message,
-                stack: error.stack,
-                cardId: card.id,
-                sourceBoardName: sourceBoard.name,
-                targetListName: targetList.name
-            });
-            throw error;
-        }
+        console.log(`Deleted mirrored card: ${mirroredCardId}`);
     }
 
     /**
@@ -409,18 +452,27 @@ export class TrelloSync {
      * @param {Object} targetList - The target list details
      */
     async handleAggregateCardMove(card, targetList) {
+        if (this.processingCards.has(card.id)) {
+            console.log(`Card ${card.id} is already being processed, skipping movement`);
+            return;
+        }
+
         try {
+            await this.acquireLock(card.id);
+            this.processingCards.add(card.id);
+
             console.log('=== Starting handleAggregateCardMove ===');
             console.log(`Processing card: ${card.name} (${card.id})`);
             console.log(`Target list: ${targetList.name}`);
 
-            // Fetch full card details if description is missing
+            // Fetch full card details if needed
+            let fullCard = card;
             if (!card.desc) {
-                card = await this.fetchWithRetry(() => trelloApi.request(`/cards/${card.id}`));
+                fullCard = await this.fetchWithRetry(() => trelloApi.request(`/cards/${card.id}`));
             }
 
             // Extract original board info from card description
-            const boardMatch = card.desc ? card.desc.match(/Original board: (.*?)(?:\n|$)/) : null;
+            const boardMatch = fullCard.desc ? fullCard.desc.match(/Original board: (.*?)(?:\n|$)/) : null;
             if (!boardMatch) {
                 console.log('No original board info found in card description');
                 return;
@@ -463,8 +515,13 @@ export class TrelloSync {
                     idList: sourceListId,
                 })
             );
+
+            console.log(`Successfully synchronized movement to source board`);
         } catch (error) {
             console.error('Error in handleAggregateCardMove:', error);
+        } finally {
+            this.releaseLock(card.id);
+            this.processingCards.delete(card.id);
         }
     }
 }

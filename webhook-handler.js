@@ -3,6 +3,36 @@ import { config } from './config.js';
 import { setTimeout } from 'timers/promises';
 import { trelloApi } from './trello-api.js';
 
+class WebhookProcessor {
+    constructor() {
+        // Store recently processed webhook IDs with timestamps
+        this.processedWebhooks = new Map();
+        // Cleanup interval (5 minutes)
+        setInterval(() => this.cleanupProcessedWebhooks(), 5 * 60 * 1000);
+    }
+
+    isWebhookProcessed(actionId) {
+        return this.processedWebhooks.has(actionId);
+    }
+
+    markWebhookProcessed(actionId) {
+        this.processedWebhooks.set(actionId, Date.now());
+    }
+
+    cleanupProcessedWebhooks() {
+        const now = Date.now();
+        const expiryTime = 5 * 60 * 1000; // 5 minutes
+
+        for (const [actionId, timestamp] of this.processedWebhooks.entries()) {
+            if (now - timestamp > expiryTime) {
+                this.processedWebhooks.delete(actionId);
+            }
+        }
+    }
+}
+
+const webhookProcessor = new WebhookProcessor();
+
 // Enhanced timeout utility with logging
 async function withTimeout(asyncFunc, ms = 10000, operationName = 'Unknown Operation') {
     const startTime = Date.now();
@@ -151,6 +181,15 @@ export function createWebhookRoutes(app, trelloSync) {
             }
 
             const { action } = req.body;
+
+            // Check if webhook was already processed
+            if (webhookProcessor.isWebhookProcessed(action.id)) {
+                console.log(`${webhookId}: Skipping duplicate webhook action: ${action.id}`);
+                return;
+            }
+
+            // Mark webhook as processed immediately
+            webhookProcessor.markWebhookProcessed(action.id);
 
             // Log webhook context
             console.log('Webhook Context:', {

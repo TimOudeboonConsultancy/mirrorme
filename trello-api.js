@@ -1,10 +1,35 @@
 import fetch from 'node-fetch';
 import { config } from './config.js';
 
+class RateLimiter {
+    constructor(maxRequests = 100, timeWindow = 10000) {
+        this.requests = [];
+        this.maxRequests = maxRequests;
+        this.timeWindow = timeWindow;
+    }
+
+    async acquireToken() {
+        const now = Date.now();
+        this.requests = this.requests.filter(time => now - time < this.timeWindow);
+
+        if (this.requests.length >= this.maxRequests) {
+            const oldestRequest = this.requests[0];
+            const waitTime = this.timeWindow - (now - oldestRequest);
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+        }
+
+        this.requests.push(now);
+    }
+}
+
+const rateLimiter = new RateLimiter();
+
 export const trelloApi = {
     baseUrl: 'https://api.trello.com/1',
 
     async request(endpoint, options = {}) {
+        await rateLimiter.acquireToken();
+
         const url = `${this.baseUrl}${endpoint}?key=${config.apiKey}&token=${config.token}`;
         console.log('Making Trello API request:', {
             url: url.replace(config.token, '[REDACTED]'),
@@ -14,6 +39,15 @@ export const trelloApi = {
 
         try {
             const response = await fetch(url, options);
+
+            // Parse rate limit headers
+            const remaining = response.headers.get('x-rate-limit-remaining');
+            const reset = response.headers.get('x-rate-limit-reset');
+
+            if (remaining) {
+                console.log(`Rate limit remaining: ${remaining}, reset: ${reset}`);
+            }
+
             if (!response.ok) {
                 const errorText = await response.text();
                 console.error('Trello API error response:', {
@@ -56,7 +90,7 @@ export const trelloApi = {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                idList: listId,  // Make sure this is being set
+                idList: listId,
                 name: cardData.name,
                 desc: cardData.desc,
                 due: cardData.due,
@@ -78,5 +112,17 @@ export const trelloApi = {
         return this.request(`/cards/${cardId}`, {
             method: 'DELETE'
         });
+    },
+
+    async createLabel(boardId, labelData) {
+        return this.request(`/boards/${boardId}/labels`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(labelData)
+        });
+    },
+
+    async getLabels(boardId) {
+        return this.request(`/boards/${boardId}/labels`);
     }
 };

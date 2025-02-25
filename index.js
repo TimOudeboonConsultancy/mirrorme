@@ -117,11 +117,11 @@ app.listen(port, async () => {
     await trelloSync.initialize();
     console.log('TrelloSync initialization complete');
   } catch (error) {
-      console.error('TrelloSync initialization failed:', {
-        error: error.message,
-        stack: error.stack
-      });
-      // Continue running the server even if sync initialization fails
-      // This allows for manual recovery and webhook processing
-    }
-  });
+    console.error('TrelloSync initialization failed:', {
+      error: error.message,
+      stack: error.stack
+    });
+    // Continue running the server even if sync initialization fails
+    // This allows for manual recovery and webhook processing
+  }
+});
