@@ -90,17 +90,29 @@ const trelloSync = new TrelloSync();
 // Create routes with the enhanced webhook handler
 createWebhookRoutes(app, trelloSync);
 
-// Set up daily scheduled job
+// Add manual trigger endpoint for testing
+app.get('/trigger-card-movement', async (req, res) => {
+  console.log('Manual trigger for card movement initiated');
+  try {
+    await trelloSync.performDailyCardMovement();
+    res.send('Card movement completed successfully');
+  } catch (error) {
+    console.error('Error in manual card movement:', error);
+    res.status(500).send('Error processing card movement');
+  }
+});
+
+// Set up improved scheduled job to run every 6 hours
 const dailyJob = schedule.scheduleJob({
-  hour: 0,
+  hour: [0, 6, 12, 18], // Run every 6 hours
   minute: 0,
   tz: config.timezone
 }, async () => {
-  console.log('Daily scheduled job for card movement starting...');
+  console.log('Scheduled job for card movement starting...');
   try {
     await trelloSync.performDailyCardMovement();
   } catch (error) {
-    console.error('Error in daily scheduled job:', error);
+    console.error('Error in scheduled job:', error);
   }
 });
 

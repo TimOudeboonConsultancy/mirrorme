@@ -161,7 +161,11 @@ export class TrelloSync {
         }
 
         const today = new Date();
+        today.setHours(0, 0, 0, 0); // Normalize to start of day
+
         const dueDate = new Date(fullCard.due);
+        dueDate.setHours(0, 0, 0, 0); // Normalize to start of day
+
         const daysDifference = Math.ceil((dueDate - today) / (1000 * 60 * 60 * 24));
 
         console.log('Date Calculation:', {
@@ -170,25 +174,41 @@ export class TrelloSync {
             daysDifference
         });
 
-        // Find the appropriate target list based on due date
-        const targetListPriority = config.listPriorities.find(priority => {
-            return (
-                priority.maxDays >= 0 &&
-                (daysDifference <= priority.maxDays ||
-                    (priority.name === 'Vandaag' && dueDate <= today))
-            );
-        });
+        // Find the most appropriate target list - search from most urgent to least urgent
+        let targetListPriority = null;
+
+        // If due date is today or past
+        if (daysDifference <= 0) {
+            targetListPriority = config.listPriorities.find(p => p.name === 'Vandaag');
+        }
+        // If due within next 7 days
+        else if (daysDifference <= 7) {
+            targetListPriority = config.listPriorities.find(p => p.name === 'Komende 7 dagen');
+        }
+        // If due within next 30 days
+        else if (daysDifference <= 30) {
+            targetListPriority = config.listPriorities.find(p => p.name === 'Komende 30 dagen');
+        }
 
         if (!targetListPriority) {
-            console.log('No matching list priority found');
+            console.log(`No matching list priority found for card due in ${daysDifference} days`);
             this.processingCards.delete(card.id);
             return;
         }
+
+        console.log(`Selected target list: ${targetListPriority.name} based on days difference: ${daysDifference}`);
 
         const targetListId = this.listMapping.get(`${boardId}-${targetListPriority.name}`);
 
         if (!targetListId) {
             console.error(`Target list not found: ${targetListPriority.name} for board ${boardId}`);
+            this.processingCards.delete(card.id);
+            return;
+        }
+
+        // Check if card is already in the correct list
+        if (fullCard.idList === targetListId) {
+            console.log(`Card is already in the correct list: ${targetListPriority.name}`);
             this.processingCards.delete(card.id);
             return;
         }
