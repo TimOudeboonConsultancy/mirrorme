@@ -1,0 +1,66 @@
+# Coding Guidelines for Assistance
+
+## Code Organization
+
+- All files should use region markers to organize code into logical blocks
+- Format for regions:
+  ```javascript
+  // #region DESCRIPTIVE_NAME
+  function someFunction() {
+    // implementation
+  }
+  // #endregion DESCRIPTIVE_NAME
+  ```
+
+## Assistance Rules
+
+When suggesting code changes:
+1. Refer to specific regions by their name, e.g., "Replace the CARD_UPDATE region with this:"
+2. Provide complete code for the region being replaced
+3. For complex changes across multiple files, specify exactly which region in which file to modify
+4. Use diff notation when appropriate for small changes:
+   ```diff
+   - const oldCode = something();
+   + const newCode = somethingBetter();
+   ```
+5. Always explain the purpose of the changes
+
+## Naming Conventions for Regions
+
+- Use UPPERCASE_WITH_UNDERSCORES for region names
+- Name regions based on their logical function, not implementation details
+- Keep names concise but descriptive
+
+## Benefits of Using Regions
+
+- Easier navigation in IDEs like WebStorm that support code folding
+- Clear boundaries for code replacement during updates
+- Self-documenting code structure
+- Reduced context needed when discussing specific parts of the codebase
+
+## Example Region Names
+
+- API_RETRY
+- CARD_CREATION
+- EVENT_HANDLERS
+- INITIALIZATION
+- AUTHENTICATION
+- DATA_PROCESSING
+- ERROR_HANDLING
+- UTILITIES
+- VALIDATION
+- SYNCHRONIZATION
+
+## File Organization Tips
+
+- Group related functionality into the same file
+- Consider breaking very large files (>500 lines) into multiple smaller files
+- Use a consistent order for regions (e.g., initialization first, helpers last)
+- For class-based files, keep the constructor in a CLASS_DEFINITION region at the top
+
+## Updating Guidelines
+
+- When adding new code, always place it within an appropriate region
+- Create new regions when adding significantly different functionality
+- Keep region sizes reasonable (ideally <100 lines each)
+- Ensure region names accurately reflect their current purpose as code evolves
