@@ -1,6 +1,7 @@
 import { config } from './config.js';
 import { trelloApi } from './trello-api.js';
 
+// #region CLASS_DEFINITION
 export class TrelloSync {
     constructor() {
         // Maps to store board and card relationships
@@ -13,7 +14,9 @@ export class TrelloSync {
         // Track cards being processed
         this.processingCards = new Set();
     }
+// #endregion CLASS_DEFINITION
 
+    // #region LOCK_MANAGEMENT
     async acquireLock(cardId, timeout = 5000) {
         const start = Date.now();
         while (this.syncLock.has(cardId)) {
@@ -28,7 +31,9 @@ export class TrelloSync {
     releaseLock(cardId) {
         this.syncLock.delete(cardId);
     }
+    // #endregion LOCK_MANAGEMENT
 
+    // #region INITIALIZATION
     /**
      * Initialize the TrelloSync service by mapping lists across source and aggregate boards
      */
@@ -69,7 +74,9 @@ export class TrelloSync {
 
         console.log('TrelloSync initialized');
     }
+    // #endregion INITIALIZATION
 
+    // #region API_RETRY
     /**
      * Retry mechanism for API calls with exponential backoff
      * @param {Function} apiCall - The API call to execute
@@ -102,7 +109,9 @@ export class TrelloSync {
 
         throw new Error('API call failed after maximum retries');
     }
+    // #endregion API_RETRY
 
+    // #region CARD_FINDER
     /**
      * Find existing mirrored cards on the aggregate board
      * @param {Object} card - The original card
@@ -124,7 +133,9 @@ export class TrelloSync {
             return [];
         }
     }
+    // #endregion CARD_FINDER
 
+    // #region DUE_DATE_HANDLER
     /**
      * Handle automatic list movement based on card's due date
      * @param {Object} card - The card to potentially move
@@ -224,7 +235,9 @@ export class TrelloSync {
             this.processingCards.delete(card.id);
         }
     }
+    // #endregion DUE_DATE_HANDLER
 
+    // #region DAILY_MOVEMENT
     /**
      * Perform daily automatic card movement across all source boards
      */
@@ -252,7 +265,9 @@ export class TrelloSync {
             console.error('Error in daily card movement:', error);
         }
     }
+    // #endregion DAILY_MOVEMENT
 
+    // #region CARD_MOVE_HANDLER
     /**
      * Handle card movement across boards, creating or updating mirrored cards
      * @param {Object} card - The card being moved
@@ -353,7 +368,9 @@ export class TrelloSync {
             this.processingCards.delete(card.id);
         }
     }
+    // #endregion CARD_MOVE_HANDLER
 
+    // #region CARD_CREATION
     /**
      * Create a mirrored card on the aggregate board
      * @param {Object} card - The original card
@@ -407,7 +424,9 @@ export class TrelloSync {
         console.log(`Created new mirrored card: ${mirroredCard.id}`);
         return mirroredCard.id;
     }
+    // #endregion CARD_CREATION
 
+    // #region CARD_UPDATE
     /**
      * Update an existing mirrored card on the aggregate board
      * @param {string} mirroredCardId - The ID of the mirrored card
@@ -454,7 +473,9 @@ export class TrelloSync {
 
         console.log(`Updated mirrored card: ${mirroredCardId}`);
     }
+    // #endregion CARD_UPDATE
 
+    // #region CARD_DELETION
     /**
      * Delete a mirrored card and remove its mapping
      * @param {string} mirroredCardId - The ID of the mirrored card to delete
@@ -465,7 +486,9 @@ export class TrelloSync {
         this.cardMapping.delete(cardMappingKey);
         console.log(`Deleted mirrored card: ${mirroredCardId}`);
     }
+    // #endregion CARD_DELETION
 
+    // #region AGGREGATE_CARD_MOVE
     /**
      * Handle card movement on the aggregate board
      * @param {Object} card - The card being moved
@@ -544,4 +567,5 @@ export class TrelloSync {
             this.processingCards.delete(card.id);
         }
     }
+    // #endregion AGGREGATE_CARD_MOVE
 }

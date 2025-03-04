@@ -3,6 +3,7 @@ import { config } from './config.js';
 import { setTimeout } from 'timers/promises';
 import { trelloApi } from './trello-api.js';
 
+// #region WEBHOOK_PROCESSOR
 class WebhookProcessor {
     constructor() {
         // Store recently processed webhook IDs with timestamps
@@ -32,7 +33,9 @@ class WebhookProcessor {
 }
 
 const webhookProcessor = new WebhookProcessor();
+// #endregion WEBHOOK_PROCESSOR
 
+// #region TIMEOUT_UTILITY
 // Enhanced timeout utility with logging
 async function withTimeout(asyncFunc, ms = 10000, operationName = 'Unknown Operation') {
     const startTime = Date.now();
@@ -57,7 +60,9 @@ async function withTimeout(asyncFunc, ms = 10000, operationName = 'Unknown Opera
         throw error;
     }
 }
+// #endregion TIMEOUT_UTILITY
 
+// #region WEBHOOK_VALIDATION
 // Enhanced webhook validation with detailed logging
 export function validateTrelloWebhook(req, res, next) {
     const startTime = Date.now();
@@ -149,7 +154,9 @@ export function validateTrelloWebhook(req, res, next) {
     console.log(`${requestId}: Rejecting unsupported method: ${req.method}`);
     res.status(405).send('Method Not Allowed');
 }
+// #endregion WEBHOOK_VALIDATION
 
+// #region WEBHOOK_ROUTES
 // Enhanced webhook routes with detailed logging
 export function createWebhookRoutes(app, trelloSync) {
     // Health check endpoint
@@ -310,3 +317,4 @@ export function createWebhookRoutes(app, trelloSync) {
         }
     });
 }
+// #endregion WEBHOOK_ROUTES

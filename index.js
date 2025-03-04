@@ -4,9 +4,12 @@ import { createWebhookRoutes, validateTrelloWebhook } from './webhook-handler.js
 import schedule from 'node-schedule';
 import { config } from './config.js';
 
+// #region APP_INITIALIZATION
 // Initialize express app
 const app = express();
+// #endregion APP_INITIALIZATION
 
+// #region MIDDLEWARE_SETUP
 // Enhanced request body parsing middleware with rawBody capture
 app.use(express.json({
   verify: (req, res, buf) => {
@@ -83,10 +86,14 @@ app.use((err, req, res, next) => {
     message: process.env.NODE_ENV === 'development' ? err.message : undefined
   });
 });
+// #endregion MIDDLEWARE_SETUP
 
+// #region TRELLO_SYNC_INIT
 // Initialize TrelloSync with error handling
 const trelloSync = new TrelloSync();
+// #endregion TRELLO_SYNC_INIT
 
+// #region ROUTES_SETUP
 // Create routes with the enhanced webhook handler
 createWebhookRoutes(app, trelloSync);
 
@@ -101,7 +108,9 @@ app.get('/trigger-card-movement', async (req, res) => {
     res.status(500).send('Error processing card movement');
   }
 });
+// #endregion ROUTES_SETUP
 
+// #region SCHEDULED_JOBS
 // Set up improved scheduled job to run every 6 hours
 const dailyJob = schedule.scheduleJob({
   hour: [0, 6, 12, 18], // Run every 6 hours
@@ -115,7 +124,9 @@ const dailyJob = schedule.scheduleJob({
     console.error('Error in scheduled job:', error);
   }
 });
+// #endregion SCHEDULED_JOBS
 
+// #region SERVER_STARTUP
 // Start server with enhanced logging and error handling
 const port = process.env.PORT || 3000;
 app.listen(port, async () => {
@@ -137,3 +148,4 @@ app.listen(port, async () => {
     // This allows for manual recovery and webhook processing
   }
 });
+// #endregion SERVER_STARTUP

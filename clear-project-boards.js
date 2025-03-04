@@ -1,6 +1,7 @@
 import { config } from './config.js';
 import { trelloApi } from './trello-api.js';
 
+// #region BOARD_CLEANING
 async function clearProjectBoards() {
     // Combine source boards and aggregate board
     const boardsToClean = [
@@ -32,6 +33,7 @@ async function clearProjectBoards() {
 
     console.log('Project board card cleanup complete!');
 }
+// #endregion BOARD_CLEANING
 
 // Immediately invoke the cleanup function
 clearProjectBoards().catch(console.error);

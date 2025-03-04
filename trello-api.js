@@ -1,6 +1,7 @@
 import fetch from 'node-fetch';
 import { config } from './config.js';
 
+// #region RATE_LIMITER
 class RateLimiter {
     constructor(maxRequests = 100, timeWindow = 10000) {
         this.requests = [];
@@ -23,10 +24,13 @@ class RateLimiter {
 }
 
 const rateLimiter = new RateLimiter();
+// #endregion RATE_LIMITER
 
+// #region TRELLO_API_DEFINITION
 export const trelloApi = {
     baseUrl: 'https://api.trello.com/1',
 
+    // #region REQUEST_HANDLER
     async request(endpoint, options = {}) {
         await rateLimiter.acquireToken();
 
@@ -70,7 +74,9 @@ export const trelloApi = {
             throw error;
         }
     },
+    // #endregion REQUEST_HANDLER
 
+    // #region BOARD_OPERATIONS
     async getBoard(boardId) {
         return this.request(`/boards/${boardId}`);
     },
@@ -82,7 +88,9 @@ export const trelloApi = {
     async getCards(boardId) {
         return this.request(`/boards/${boardId}/cards`);
     },
+    // #endregion BOARD_OPERATIONS
 
+    // #region CARD_OPERATIONS
     async createCard(listId, cardData) {
         console.log('Creating card with data:', JSON.stringify(cardData, null, 2));
         console.log('List ID:', listId);
@@ -113,7 +121,9 @@ export const trelloApi = {
             method: 'DELETE'
         });
     },
+    // #endregion CARD_OPERATIONS
 
+    // #region LABEL_OPERATIONS
     async createLabel(boardId, labelData) {
         return this.request(`/boards/${boardId}/labels`, {
             method: 'POST',
@@ -125,4 +135,6 @@ export const trelloApi = {
     async getLabels(boardId) {
         return this.request(`/boards/${boardId}/labels`);
     }
+    // #endregion LABEL_OPERATIONS
 };
+// #endregion TRELLO_API_DEFINITION
