@@ -3,12 +3,12 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "start": "node src/index.js",
-    "dev": "nodemon src/index.js",
-    "clear-boards": "node src/clear-project-boards.js",
-    "setup-webhooks": "node src/webhook-setup.js",
-    "cleanup-webhooks": "node src/webhook-cleanup.js",
-    "test": "node src/test-requests.js"
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "clear-boards": "node clear-project-boards.js",
+    "setup-webhooks": "node webhook-setup.js",
+    "cleanup-webhooks": "node webhook-cleanup.js",
+    "test": "node test-requests.js"
   },
   "dependencies": {
     "dotenv": "^16.4.7",
