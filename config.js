@@ -9,7 +9,7 @@ export const config = {
     token: process.env.TRELLO_TOKEN,
     // #endregion API_CREDENTIALS
 
-    // #region BOARD_DEFINITIONS
+    // #region BOARD_DEFINITIONS (production)
     sourceBoards: [
         { id: '67aca823198750b8d3e332a4', name: 'prive' },
         { id: '67acb53d60d68b99ef11344d', name: 'mba' },
