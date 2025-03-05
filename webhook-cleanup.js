@@ -7,7 +7,7 @@ dotenv.config();
 const config = {
     apiKey: process.env.TRELLO_API_KEY,
     token: process.env.TRELLO_TOKEN,
-    callbackURL: 'https://trello-sync-mirror-f28465526010.herokuapp.com/webhook/card-moved',
+    callbackURL: 'https://trello-sync-dev-fa9d25536258.herokuapp.com/webhook/card-moved',
     sourceBoards: [
         '67aca823198750b8d3e332a4', // prive
         '67acb53d60d68b99ef11344d', // mba

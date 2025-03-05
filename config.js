@@ -11,21 +11,17 @@ export const config = {
 
     // #region BOARD_DEFINITIONS
     sourceBoards: [
-        { id: '67aca823198750b8d3e332a4', name: 'prive' },
-        { id: '67acb53d60d68b99ef11344d', name: 'mba' },
-        { id: '67acb47a4c0afec8a06c9870', name: 'opdracht' },
-        { id: '67acabbf06e3955d1e3be739', name: 'tim-oudeboon-bv' }
+        { id: '67c8c911d094f51d6aca3290', name: 'prive' },
+        { id: '67c8c91d0a2de30d2a066f82', name: 'mba' }
     ],
-    aggregateBoard: '67aca8e24e193b7fa5580831',
+    aggregateBoard: '67c8c92aa2d17ef85ef80ebb',
     // #endregion BOARD_DEFINITIONS
 
     // #region LIST_CONFIGURATION
     listNames: ['Inbox', 'Komende 30 dagen', 'Komende 7 dagen', 'Vandaag', 'Done'],
     boardMapping: {
         'prive': 'green_light',
-        'mba': 'blue_dark',
-        'opdracht': 'red_light',
-        'tim-oudeboon-bv': 'orange_dark'
+        'mba': 'blue_dark'
     },
     // #endregion LIST_CONFIGURATION
 
